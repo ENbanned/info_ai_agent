@@ -21,6 +21,7 @@ data/reports/
 data/channels.json
 data/world_model.json
 data/analyst_workdir/node_modules/
+data/analyst_workdir/*.js
 
 # IDE / tools
 .claude/
