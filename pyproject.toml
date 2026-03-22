@@ -1,0 +1,15 @@
+[project]
+name = "mem0bot"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "claude-agent-sdk>=0.1.48",
+    "kurigram>=2.2.19",
+    "loguru>=0.7.3",
+    "mem0ai[graph]==1.0.5",
+    "python-dotenv>=1.2.2",
+    "tgcrypto>=1.2.5",
+    "voyageai>=0.3.7",
+]

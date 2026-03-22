@@ -1,0 +1,53 @@
+{
+  "telegram": {
+    "api_id": 2040,
+    "api_hash": "b18441a1ff607e10a989891a5462e627",
+    "session_name": "tg_session",
+    "device_model": "MS-7D20",
+    "system_version": "Windows 11 x64",
+    "app_version": "6.6.2 x64",
+    "lang_pack": "tdesktop",
+    "lang_code": "en",
+    "system_lang_code": "en-US",
+    "client_platform": "DESKTOP"
+  },
+
+  "voyage": {
+    "api_key": "YOUR_VOYAGE_API_KEY",
+    "embed_model": "voyage-4",
+    "embedding_dims": 1024,
+    "rerank_model": "rerank-2.5"
+  },
+
+  "models": {
+    "classifier": "sonnet",
+    "analyst": "opus",
+    "extraction": "sonnet"
+  },
+
+  "mem0": {
+    "llm": {
+      "provider": "claude_code",
+      "config": { "model": "sonnet" }
+    },
+    "vector_store": {
+      "provider": "qdrant",
+      "config": { "host": "qdrant", "port": 6333, "embedding_model_dims": 1024 }
+    },
+    "graph_store": {
+      "provider": "neo4j",
+      "config": { "url": "bolt://neo4j:7687", "username": "neo4j", "password": "mem0graphpass" }
+    },
+    "version": "v1.1"
+  },
+
+  "sources": {
+    "topic_channels": [],
+    "channels": []
+  },
+
+  "bot": {
+    "token": "YOUR_BOT_TOKEN",
+    "owner_chat_id": 0
+  }
+}

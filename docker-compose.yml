@@ -1,0 +1,43 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "127.0.0.1:6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
+  neo4j:
+    image: neo4j:community
+    ports:
+      - "127.0.0.1:7687:7687"
+      - "127.0.0.1:7474:7474"
+    environment:
+      NEO4J_AUTH: neo4j/mem0graphpass
+      NEO4J_PLUGINS: '["apoc"]'
+    volumes:
+      - neo4j_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "mem0graphpass", "RETURN 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  bot:
+    build: .
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    volumes:
+      - ./data:/app/data
+      - ./config.json:/app/config.json:ro
+      - ${CLAUDE_CREDS_DIR:-~/.claude}:/run/claude-creds:ro
+    restart: unless-stopped
+
+volumes:
+  qdrant_data:
+  neo4j_data:

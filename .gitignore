@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environment
+.venv/
+
+# Secrets
+.env
+config.json
+
+# Runtime data
+data/sessions/
+data/logs/
+data/media/
+data/reports/
+data/channels.json
+data/world_model.json
+data/analyst_workdir/node_modules/
+
+# IDE / tools
+.claude/
