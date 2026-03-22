@@ -6,7 +6,7 @@ You add channels — the bot reads them, extracts key facts, builds a knowledge 
 
 ## Requirements
 
-- Ubuntu server
+- Linux server with **KVM virtualization** (not OpenVZ/LXC), minimum 8GB RAM, 25GB disk
 - [Claude Pro/Max/Teams](https://claude.ai) subscription
 - Telegram account
 - Bot token from [@BotFather](https://t.me/BotFather)
@@ -18,35 +18,21 @@ You add channels — the bot reads them, extracts key facts, builds a knowledge 
 
 ```bash
 curl -fsSL https://claude.ai/install.sh | bash
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
+```
+
+If `claude` is not found after install:
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 ```
 
 ### 2. Install Docker
 
+Follow the official guide for your OS: [docs.docker.com/engine/install](https://docs.docker.com/engine/install/)
+
+Verify it works:
 ```bash
-sudo apt update
-sudo apt install -y ca-certificates curl gnupg
-
-sudo install -m 0755 -d /etc/apt/keyrings
-sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-sudo chmod a+r /etc/apt/keyrings/docker.asc
-
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-sudo apt update
-sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-sudo usermod -aG docker $USER
-newgrp docker
-```
-
-If Docker repo doesn't support your Ubuntu version yet:
-```bash
-sudo apt update
-sudo apt install -y docker.io docker-compose-v2
-sudo usermod -aG docker $USER
-newgrp docker
+docker --version
+docker compose version
 ```
 
 ### 3. Log in to Claude
