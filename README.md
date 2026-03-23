@@ -189,3 +189,4 @@ sudo -u agent screen -r agent
 ---
 
 <p align="center"><a href="LICENSE">MIT License</a></p>
+<p align="center"><a href="https://t.me/enbanends_home">Telegram</a></p>
