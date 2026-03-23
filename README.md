@@ -6,9 +6,8 @@ You add channels — the bot reads them, extracts key facts, builds a knowledge 
 
 ## Requirements
 
-- Linux server (Ubuntu/Debian), minimum 8GB RAM
+- Ubuntu server, minimum 8GB RAM
 - [Claude Pro/Max/Teams](https://claude.ai) subscription
-- Python 3.12+, Node.js 20+, Docker
 - Bot token from [@BotFather](https://t.me/BotFather)
 - [Voyage AI](https://www.voyageai.com/) API key (free tier works)
 
@@ -18,23 +17,37 @@ You add channels — the bot reads them, extracts key facts, builds a knowledge 
 
 ```bash
 curl -fsSL https://claude.ai/install.sh | bash
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
 
 # Check
 claude --version
+```
+
+Log in (opens a browser link):
+
+```bash
 claude login
 ```
 
 ### 2. Install Docker
 
-Follow [docs.docker.com/engine/install](https://docs.docker.com/engine/install/) for your OS.
-
 ```bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
 # Check
-docker --version && docker compose version
+docker --version
+docker compose version
 ```
 
-### 3. Install uv
+### 3. Install uv + Python
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -59,7 +72,7 @@ node --version
 ### 5. Install screen
 
 ```bash
-apt install -y screen
+sudo apt-get install -y screen
 ```
 
 ### 6. Clone and configure
@@ -79,7 +92,7 @@ Fill in:
 
 > `api_id` and `api_hash` are pre-set to Telegram Desktop native client values (reverse-engineered). Don't change them — they tell Telegram servers this is a real desktop client, which reduces the risk of account restrictions.
 
-### 7. Install and patch
+### 7. Install dependencies
 
 ```bash
 uv sync
