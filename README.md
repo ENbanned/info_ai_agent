@@ -34,23 +34,35 @@ Follow [docs.docker.com/engine/install](https://docs.docker.com/engine/install/)
 docker --version && docker compose version
 ```
 
-### 3. Install uv, Node.js 22, screen
+### 3. Install uv
 
 ```bash
-# uv (manages Python + packages)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 source ~/.bashrc
 uv python install 3.12
 
-# Node.js 22 LTS
-curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-apt install -y nodejs screen
-
 # Check
-uv --version && python3 --version && node --version
+uv --version
 ```
 
-### 4. Clone and configure
+### 4. Install Node.js 22
+
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+source ~/.bashrc
+nvm install 22
+
+# Check
+node --version
+```
+
+### 5. Install screen
+
+```bash
+apt install -y screen
+```
+
+### 6. Clone and configure
 
 ```bash
 git clone https://github.com/ENbanned/info_ai_agent.git
@@ -67,20 +79,20 @@ Fill in:
 
 > `api_id` and `api_hash` are pre-set to Telegram Desktop native client values (reverse-engineered). Don't change them — they tell Telegram servers this is a real desktop client, which reduces the risk of account restrictions.
 
-### 5. Install and patch
+### 7. Install and patch
 
 ```bash
 uv sync
 bash mem0bot/patches/apply_patches.sh
 ```
 
-### 6. Start infrastructure
+### 8. Start infrastructure
 
 ```bash
 docker compose up -d
 ```
 
-### 7. First run — Telegram login
+### 9. First run — Telegram login
 
 ```bash
 uv run main.py
@@ -88,7 +100,7 @@ uv run main.py
 
 Enter your phone number and verification code when prompted. Wait for `System running`, then `Ctrl+C`.
 
-### 8. Run
+### 10. Run
 
 ```bash
 bash run.sh
