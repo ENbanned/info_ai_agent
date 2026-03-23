@@ -64,14 +64,22 @@ uv run main.py
 
 Enter your phone number and verification code when prompted. Wait for `System running`, then `Ctrl+C`.
 
-### 6. Run in background
+### 6. Run
 
 ```bash
-screen -S agent
-uv run main.py
+bash run.sh
 ```
 
-Press `Ctrl+A D` to detach. Reattach anytime with `screen -r agent`.
+This creates a service user, copies Claude credentials, and launches the bot in a screen session.
+
+## Logs
+
+```bash
+# Attach to the live session
+sudo -u agent screen -r agent
+
+# Detach without stopping: Ctrl+A D
+```
 
 ## Usage
 
@@ -91,22 +99,11 @@ Reports are delivered automatically every 6 hours.
 ## Updating
 
 ```bash
-screen -S agent -X quit
+sudo -u agent screen -S agent -X quit
 git pull
 uv sync
 bash mem0bot/patches/apply_patches.sh
-screen -S agent
-uv run main.py
-```
-
-## Logs
-
-```bash
-# Live
-screen -r agent
-
-# Log files
-ls data/logs/
+bash run.sh
 ```
 
 ## License
