@@ -48,7 +48,7 @@ if [ "$(id -u)" = "0" ]; then
 
     # Launch in screen as service user
     echo "[run.sh] Starting in screen session 'agent' as '$SERVICE_USER'..."
-    screen -dmS agent sudo -u "$SERVICE_USER" bash -c "cd $PROJ_DIR && .venv/bin/python main.py"
+    sudo -u "$SERVICE_USER" screen -dmS agent bash -c "cd $PROJ_DIR && .venv/bin/python main.py"
     echo "[run.sh] Done. View logs: sudo -u $SERVICE_USER screen -r agent"
     exit 0
 fi
