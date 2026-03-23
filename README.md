@@ -1,4 +1,4 @@
-# Crypto Intelligence Agent
+<h1 align="center">Crypto Intelligence Agent</h1>
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.12-3776AB?style=flat&logo=python&logoColor=white" alt="Python 3.12">
