@@ -55,8 +55,9 @@ async def main():
     register_listener(user, queue, store)
 
     # 7. Background tasks
-    ingest_task = asyncio.create_task(ingest_worker(queue, memory, bot))
-    analyst_task = asyncio.create_task(analyst_loop(memory, bot, system_start))
+    memory_lock = asyncio.Lock()
+    ingest_task = asyncio.create_task(ingest_worker(queue, memory, bot, memory_lock))
+    analyst_task = asyncio.create_task(analyst_loop(memory, bot, system_start, memory_lock))
 
     logger.success("🟢 System running │ listening + analyst scheduled")
 

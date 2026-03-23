@@ -1,5 +1,6 @@
 """Opus analyst: produces 6-hour intelligence digest."""
 
+import asyncio
 import os
 import re
 import time
@@ -45,7 +46,7 @@ def _estimate_tokens(text: str) -> int:
 # Main entry point
 # ---------------------------------------------------------------------------
 
-async def run_cycle(memory, cycle_start_ts: int, cycle_end_ts: int | None = None) -> tuple[str, str | None, str | None]:
+async def run_cycle(memory, cycle_start_ts: int, cycle_end_ts: int | None = None, memory_lock=None) -> tuple[str, str | None, str | None]:
     """Run a single analyst cycle: pull data, analyze, return report.
 
     cycle_start_ts: start of the 6h window (UTC timestamp)
@@ -91,7 +92,8 @@ async def run_cycle(memory, cycle_start_ts: int, cycle_end_ts: int | None = None
     # 2. Graph: top entities (replaces get_all full scan)
     # ------------------------------------------------------------------
     try:
-        top_entities = memory.graph.get_top_entities(
+        top_entities = await asyncio.to_thread(
+            memory.graph.get_top_entities,
             filters={"user_id": "trader"}, limit=30, min_mentions=3
         )
     except Exception as e:
@@ -217,7 +219,7 @@ async def run_cycle(memory, cycle_start_ts: int, cycle_end_ts: int | None = None
     # 7. Save conclusions back to mem0 using ANALYST_EXTRACTION_PROMPT
     # ------------------------------------------------------------------
     logger.info(f"Saving analyst conclusions | cycle {cycle_id}")
-    await _save_conclusions(memory, report, cycle_id)
+    await _save_conclusions(memory, report, cycle_id, memory_lock)
 
     # ------------------------------------------------------------------
     # 8. Mark facts as reported (AFTER successful report generation)
@@ -444,28 +446,36 @@ def _extract_key_topics(cycle_facts: list) -> list[str]:
 # Conclusions saving
 # ---------------------------------------------------------------------------
 
-async def _save_conclusions(memory, report: str, cycle_id: str) -> None:
-    """Save analyst conclusions using ANALYST_EXTRACTION_PROMPT."""
-    # Swap extraction prompt on the memory instance directly (Pydantic model).
-    # Modifying MEM0_CONFIG dict has no effect -- config was copied at init time.
-    original_prompt = memory.config.custom_fact_extraction_prompt
-    memory.config.custom_fact_extraction_prompt = ANALYST_EXTRACTION_PROMPT
+async def _save_conclusions(memory, report: str, cycle_id: str, memory_lock=None) -> None:
+    """Save analyst conclusions using ANALYST_EXTRACTION_PROMPT.
 
-    try:
-        await memory.add(
-            f"[Analyst Cycle {cycle_id}]\n{report}",
-            user_id="trader",
-            agent_id="analyst",
-            metadata={
-                "source": "analyst",
-                "cycle_id": cycle_id,
-                "timestamp": int(time.time()),
-            },
-        )
-    except Exception as e:
-        logger.error(f"Failed to save analyst conclusions: {e}")
-    finally:
-        memory.config.custom_fact_extraction_prompt = original_prompt
+    Uses memory_lock to prevent concurrent memory.add() calls from
+    seeing the temporarily swapped extraction prompt.
+    """
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def _noop():
+        yield
+
+    async with memory_lock if memory_lock else _noop():
+        original_prompt = memory.config.custom_fact_extraction_prompt
+        memory.config.custom_fact_extraction_prompt = ANALYST_EXTRACTION_PROMPT
+        try:
+            await memory.add(
+                f"[Analyst Cycle {cycle_id}]\n{report}",
+                user_id="trader",
+                agent_id="analyst",
+                metadata={
+                    "source": "analyst",
+                    "cycle_id": cycle_id,
+                    "timestamp": int(time.time()),
+                },
+            )
+        except Exception as e:
+            logger.error(f"Failed to save analyst conclusions: {e}")
+        finally:
+            memory.config.custom_fact_extraction_prompt = original_prompt
 
 
 # ---------------------------------------------------------------------------

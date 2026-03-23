@@ -1,17 +1,62 @@
 # Crypto Intelligence Agent
 
-Telegram bot that monitors your crypto channels, filters noise, remembers everything, and sends you a market digest every 6 hours.
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.12-3776AB?style=flat&logo=python&logoColor=white" alt="Python 3.12">
+  <img src="https://img.shields.io/badge/Claude-Opus%20%2B%20Sonnet-cc785c?style=flat" alt="Claude">
+  <img src="https://img.shields.io/badge/Telegram-bot-26A5E4?style=flat&logo=telegram&logoColor=white" alt="Telegram">
+  <img src="https://img.shields.io/github/license/ENbanned/info_ai_agent?style=flat" alt="License">
+</p>
 
-You add channels — the bot reads them, extracts key facts, builds a knowledge graph, and writes analytical reports with theses, risks, and actionable insights. You can also ask it questions about anything it has seen.
+Reads your Telegram crypto channels, extracts what matters, and sends you an analyst-grade market report every 6 hours. Ask it anything — it remembers everything.
 
-## Requirements
+Built because reading 40+ crypto channels a day is unsustainable and most signal gets lost in noise.
 
-- Ubuntu server (8 GB RAM, 20 GB disk, 2 CPU)
-- [Claude Pro/Max/Teams](https://claude.ai) subscription
-- Bot token from [@BotFather](https://t.me/BotFather)
-- [Voyage AI](https://www.voyageai.com/) API key (free tier works)
+<p align="center">
+  <img src="docs/screenshot.png" width="500" alt="Example report in Telegram">
+</p>
 
-## Setup
+<p align="center">
+  <a href="docs/example_report.pdf">See full example report (PDF)</a>
+</p>
+
+## What it does
+
+- **Monitors** any Telegram channel or topic — just send a link to any message
+- **Filters** noise from signal using Claude Sonnet as a classifier
+- **Extracts** key facts, calls, and narratives into a vector database + knowledge graph
+- **Reports** every 6 hours with theses, risks, and actionable insights (Claude Opus)
+- **Answers** your questions about anything it has seen via `/ask`
+
+## How it works
+
+```
+Telegram channels → Listener → Classifier (Sonnet) → mem0 (Qdrant + Neo4j)
+                                                              ↓
+                                              Every 6h: Analyst (Opus) → Report → You
+```
+
+## Commands
+
+| Command | What it does |
+|---------|-------------|
+| `/add <link>` | Start monitoring a channel — copy link to any message in the channel or topic |
+| `/remove <name>` | Stop monitoring |
+| `/channels` | See what's being monitored |
+| `/pause <name>` | Temporarily mute a channel |
+| `/resume <name>` | Unmute |
+| `/ask <question>` | Ask about anything the bot has seen |
+
+## What you need
+
+| | |
+|---|---|
+| **Server** | Ubuntu, 8 GB RAM, 2 CPU, 20 GB disk |
+| **Claude** | [Pro, Max, or Teams](https://claude.ai) subscription |
+| **Telegram** | Bot token from [@BotFather](https://t.me/BotFather) |
+| **Voyage AI** | [Free API key](https://www.voyageai.com/) for embeddings |
+
+<details>
+<summary><b>Setup guide</b></summary>
 
 ### 1. Install Claude Code
 
@@ -85,12 +130,12 @@ cp config.json.example config.json
 nano config.json
 ```
 
-Fill in:
+Set these three values:
 - `bot.token` — bot token from @BotFather
 - `bot.owner_chat_id` — your Telegram user ID (get it from [@userinfobot](https://t.me/userinfobot))
 - `voyage.api_key` — API key from [voyageai.com](https://www.voyageai.com/)
 
-> `api_id` and `api_hash` are pre-set to Telegram Desktop native client values (reverse-engineered). Don't change them — they tell Telegram servers this is a real desktop client, which reduces the risk of account restrictions.
+> `api_id` and `api_hash` are pre-set to Telegram Desktop client values. Don't change them — Telegram treats the connection as a real desktop app, which reduces the risk of account restrictions.
 
 ### 7. Install dependencies
 
@@ -111,7 +156,7 @@ docker compose up -d
 uv run main.py
 ```
 
-Enter your phone number and verification code when prompted. Wait for `System running`, then `Ctrl+C`.
+Enter your phone number and verification code when prompted. Wait for `System running`, then press <kbd>Ctrl</kbd>+<kbd>C</kbd>.
 
 ### 10. Run
 
@@ -119,31 +164,9 @@ Enter your phone number and verification code when prompted. Wait for `System ru
 bash run.sh
 ```
 
-This creates a service user, copies Claude credentials, and launches the bot in a screen session.
+Creates a service user, copies Claude credentials, and launches the bot in a screen session.
 
-## Logs
-
-```bash
-# Attach to the live session
-sudo -u agent screen -r agent
-
-# Detach without stopping: Ctrl+A D
-```
-
-## Usage
-
-Talk to the bot in Telegram:
-
-| Command | What it does |
-|---------|-------------|
-| `/add <link>` | Start monitoring a channel — copy link to any message in the channel or topic |
-| `/remove <name>` | Stop monitoring |
-| `/channels` | See what's being monitored |
-| `/pause <name>` | Temporarily mute a channel |
-| `/resume <name>` | Unmute |
-| `/ask <question>` | Ask about anything the bot has seen |
-
-Reports are delivered automatically every 6 hours.
+</details>
 
 ## Updating
 
@@ -155,6 +178,15 @@ bash mem0bot/patches/apply_patches.sh
 bash run.sh
 ```
 
-## License
+## Logs
+
+```bash
+# Attach to the live session
+sudo -u agent screen -r agent
+
+# Detach without stopping: Ctrl+A D
+```
+
+---
 
 MIT

@@ -88,7 +88,7 @@ def _get_existing_reports() -> set[str]:
     return existing
 
 
-async def analyst_loop(memory, bot: Client, system_start_ts: float) -> None:
+async def analyst_loop(memory, bot: Client, system_start_ts: float, memory_lock=None) -> None:
     """Run the analyst at fixed MSK time slots: 00:00, 06:00, 12:00, 18:00."""
     logger.info(f"Analyst scheduler | MSK slots: {CYCLE_HOURS}")
 
@@ -134,7 +134,7 @@ async def analyst_loop(memory, bot: Client, system_start_ts: float) -> None:
         qa_supplement = None
         for attempt in range(3):
             try:
-                report, docx_path, qa_supplement = await run_cycle(memory, cycle_start_ts, cycle_end_ts)
+                report, docx_path, qa_supplement = await run_cycle(memory, cycle_start_ts, cycle_end_ts, memory_lock=memory_lock)
                 break  # success
             except Exception as e:
                 if attempt < 2:

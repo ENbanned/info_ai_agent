@@ -1,5 +1,6 @@
 """MCP server exposing memory search tools for the analyst agent."""
 
+import asyncio
 from datetime import datetime, timezone
 
 from claude_agent_sdk import create_sdk_mcp_server, tool
@@ -110,7 +111,8 @@ def create_memory_server(memory):
 
         # Use direct Cypher query via get_entity_relationships (O(1) by index)
         # instead of get_all() + Python filter (O(N) full graph scan)
-        rels = memory.graph.get_entity_relationships(
+        rels = await asyncio.to_thread(
+            memory.graph.get_entity_relationships,
             entity, filters={"user_id": "trader"}, limit=50
         )
 

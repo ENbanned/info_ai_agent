@@ -323,6 +323,8 @@ class ChannelStore:
             self._name_map[channel_id] = ch.name
             if ch.topics:
                 self._topic_map[channel_id] = set(ch.topics.values())
+                if channel_id not in self._topic_name_map:
+                    self._topic_name_map[channel_id] = {v: k for k, v in ch.topics.items()}
         return True
 
     def add_topic(self, channel_id: int, name: str, thread_id: int) -> bool:

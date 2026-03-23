@@ -115,7 +115,8 @@ async def _send_answer(message, answer: str, session_id: str | None) -> None:
     # Map the last sent message to the session so reply can resume
     if last_sent_id and session_id:
         _sessions[last_sent_id] = session_id
-        # Also map all chunk message IDs if multiple
+        if len(_sessions) > 500:
+            _sessions.pop(next(iter(_sessions)))
         logger.debug(f"/ask session mapped │ msg {last_sent_id} → {session_id[:12]}...")
 
 

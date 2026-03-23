@@ -10,12 +10,19 @@ from src.pipeline.classifier import classify
 from src.pipeline.preprocessor import ProcessedMessage
 from src.tg.bot import send_alert
 
+from contextlib import asynccontextmanager
+
 BATCH_SIZE = 8
 BATCH_TIMEOUT = 60  # seconds
 MAX_CONCURRENT_CLASSIFY = 5
 
 
-async def ingest_worker(queue: asyncio.Queue, memory, bot) -> None:
+@asynccontextmanager
+async def _noop_lock():
+    yield
+
+
+async def ingest_worker(queue: asyncio.Queue, memory, bot, memory_lock: asyncio.Lock | None = None) -> None:
     """Background task: consume messages from queue, classify, batch, and ingest."""
     buffer: list[ProcessedMessage] = []
     first_buffered_at: float | None = None
@@ -32,7 +39,7 @@ async def ingest_worker(queue: asyncio.Queue, memory, bot) -> None:
         if classification == "URGENT":
             logger.warning(f"⚡ URGENT → alert + mem0 │ {msg.channel_name}")
             results = await asyncio.gather(
-                _ingest_urgent(msg, memory),
+                _ingest_urgent(msg, memory, memory_lock),
                 send_alert(bot, msg.text, msg.channel_name),
                 return_exceptions=True,
             )
@@ -60,7 +67,7 @@ async def ingest_worker(queue: asyncio.Queue, memory, bot) -> None:
             msg: ProcessedMessage = await asyncio.wait_for(queue.get(), timeout=timeout)
         except (asyncio.TimeoutError, TimeoutError):
             if buffer:
-                await _flush_batch(buffer, memory)
+                await _flush_batch(buffer, memory, memory_lock)
                 buffer.clear()
                 first_buffered_at = None
             continue
@@ -74,12 +81,12 @@ async def ingest_worker(queue: asyncio.Queue, memory, bot) -> None:
         await asyncio.sleep(0)
 
         if len(buffer) >= BATCH_SIZE:
-            await _flush_batch(buffer, memory)
+            await _flush_batch(buffer, memory, memory_lock)
             buffer.clear()
             first_buffered_at = None
 
 
-async def _flush_batch(batch: list[ProcessedMessage], memory) -> None:
+async def _flush_batch(batch: list[ProcessedMessage], memory, memory_lock: asyncio.Lock | None = None) -> None:
     """Combine batch of messages and add to mem0."""
     channels = list({msg.channel_name for msg in batch})
     logger.info(f"📦 Batch ({len(batch)} msgs) │ {', '.join(channels)}")
@@ -108,13 +115,14 @@ async def _flush_batch(batch: list[ProcessedMessage], memory) -> None:
         metadata["media_paths"] = media_paths
 
     try:
-        result = await memory.add(combined, user_id="trader", metadata=metadata)
+        async with memory_lock if memory_lock else _noop_lock():
+            result = await memory.add(combined, user_id="trader", metadata=metadata)
         _log_extraction_result(result)
     except Exception as e:
         logger.error(f"Batch ingest failed: {e}")
 
 
-async def _ingest_urgent(msg: ProcessedMessage, memory) -> None:
+async def _ingest_urgent(msg: ProcessedMessage, memory, memory_lock: asyncio.Lock | None = None) -> None:
     """Add a single urgent message to mem0."""
     # Dedup detection: check if a very similar message was ingested recently
     try:
@@ -147,11 +155,12 @@ async def _ingest_urgent(msg: ProcessedMessage, memory) -> None:
 
     try:
         ts_str = datetime.fromtimestamp(msg.timestamp, tz=timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
-        result = await memory.add(
-            f"[URGENT | {msg.channel_name} | {ts_str}]\n{msg.text}",
-            user_id="trader",
-            metadata=metadata,
-        )
+        async with memory_lock if memory_lock else _noop_lock():
+            result = await memory.add(
+                f"[URGENT | {msg.channel_name} | {ts_str}]\n{msg.text}",
+                user_id="trader",
+                metadata=metadata,
+            )
         _log_extraction_result(result)
     except Exception as e:
         logger.error(f"Urgent ingest failed: {e}")
