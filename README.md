@@ -151,6 +151,7 @@ bash mem0bot/patches/apply_patches.sh
 
 ```bash
 docker compose up -d
+mkdir -p data/sessions data/logs data/media data/reports data/skills
 sleep 60 && uv run main.py
 ```
 
