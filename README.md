@@ -5,7 +5,10 @@
   <img src="https://img.shields.io/badge/Claude-Opus%20%2B%20Sonnet-cc785c?style=flat" alt="Claude">
   <img src="https://img.shields.io/badge/Telegram-bot-26A5E4?style=flat&logo=telegram&logoColor=white" alt="Telegram">
   <img src="https://img.shields.io/github/license/ENbanned/info_ai_agent?style=flat" alt="License">
-  <a href="https://t.me/enbanends_home"><img src="https://img.shields.io/badge/channel-Telegram-26A5E4?style=flat&logo=telegram&logoColor=white" alt="Telegram Channel"></a>
+</p>
+
+<p align="center">
+  <a href="https://t.me/enbanends_home"><img src="https://img.shields.io/badge/Telegram_Channel-26A5E4?style=for-the-badge&logo=telegram&logoColor=white" alt="Telegram Channel"></a>
 </p>
 
 Reads your Telegram crypto channels, extracts what matters, and sends you an analyst-grade market report every 6 hours. Ask it anything — it remembers everything.
