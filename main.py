@@ -1,12 +1,10 @@
-"""Crypto News Intelligence System — Orchestrator."""
-
 import asyncio
 import time
 from pathlib import Path
 
 from pyrogram import idle
+from mem0 import AsyncMemory
 
-# Ensure data directories exist before anything else
 _DATA = Path(__file__).parent / "data"
 for _d in ("sessions", "logs", "media", "reports", "skills", "analyst_workdir", "classifier_workdir"):
     (_DATA / _d).mkdir(parents=True, exist_ok=True)
@@ -28,46 +26,36 @@ setup_logging()
 async def main():
     system_start = time.time()
 
-    # 1. Channel store (loads from data/channels.json or migrates from config.json)
     store = ChannelStore()
-
-    # 2. Initialize mem0
-    from mem0 import AsyncMemory
 
     logger.info("Initializing mem0...")
     memory = await AsyncMemory.from_config(config_dict=MEM0_CONFIG)
     logger.success("mem0 ready │ Qdrant + Neo4j")
 
-    # 3. Start TG bot
     logger.info("Starting bot client...")
     bot = get_bot_client()
     await bot.start()
     bot_me = await bot.get_me()
     logger.success(f"Bot online │ @{bot_me.username}")
 
-    # 4. Start TG user client
     logger.info("Starting user client...")
     user = get_client()
     await user.start()
     user_me = await user.get_me()
     logger.success(f"User client │ @{user_me.username}")
 
-    # 5. Register handlers on bot
     register_ask_handler(bot, memory)
     register_channel_manager(bot, user, store)
 
-    # 6. Pipeline
     queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
     register_listener(user, queue, store)
 
-    # 7. Background tasks
     memory_lock = asyncio.Lock()
     ingest_task = asyncio.create_task(ingest_worker(queue, memory, bot, memory_lock))
     analyst_task = asyncio.create_task(analyst_loop(memory, bot, system_start, memory_lock))
 
     logger.success("🟢 System running │ listening + analyst scheduled")
 
-    # 8. Keep alive
     try:
         await idle()
     finally:
