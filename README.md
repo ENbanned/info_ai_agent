@@ -30,15 +30,16 @@ Follow [docs.docker.com/engine/install](https://docs.docker.com/engine/install/)
 docker --version && docker compose version
 ```
 
-### 3. Install Python 3.12+, Node.js, uv
+### 3. Install uv, Node.js, screen
 
 ```bash
-# Python 3.12 + Node.js (Ubuntu/Debian)
-apt update && apt install -y python3.12 python3.12-venv nodejs npm screen
-
-# uv (Python package manager)
+# uv (manages Python + packages)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 source ~/.bashrc
+uv python install 3.12
+
+# Node.js + screen
+apt update && apt install -y nodejs npm screen
 ```
 
 ### 4. Clone and configure
