@@ -151,17 +151,12 @@ bash mem0bot/patches/apply_patches.sh
 
 ```bash
 docker compose up -d
-```
-
-### 9. First run — Telegram login
-
-```bash
-uv run main.py
+sleep 60 && uv run main.py
 ```
 
 Enter your phone number and verification code when prompted. Wait for `System running`, then press <kbd>Ctrl</kbd>+<kbd>C</kbd>.
 
-### 10. Run
+### 9. Run
 
 ```bash
 bash run.sh
