@@ -1,22 +1,8 @@
-"""Convert Markdown text (from Opus responses) to beautiful Telegram HTML.
-
-Telegram Bot API HTML mode supports:
-  <b>, <i>, <u>, <s>, <code>, <pre>, <a>, <blockquote>, <blockquote expandable>,
-  <tg-spoiler>, <tg-emoji>, <tg-time>
-
-This module converts Opus Markdown output into visually polished Telegram messages.
-"""
-
 import re
 from html import escape as _html_escape
 
 
-# ---------------------------------------------------------------------------
-# Section emoji mapping — auto-decorates headings
-# ---------------------------------------------------------------------------
-
 _SECTION_EMOJI = {
-    # Russian keywords
     "вывод": "💡", "выводы": "💡", "итог": "💡", "итоги": "💡",
     "заключение": "💡", "резюме": "💡",
     "риск": "⚠️", "риски": "⚠️", "предупреждение": "⚠️",
@@ -28,7 +14,6 @@ _SECTION_EMOJI = {
     "сценарий": "📋", "сценарии": "📋",
     "источник": "🔗", "ссылк": "🔗",
     "главн": "🏆", "ключев": "🏆",
-    # English keywords
     "summary": "💡", "conclusion": "💡", "takeaway": "💡",
     "risk": "⚠️", "warning": "⚠️", "caution": "⚠️",
     "analysis": "🔍", "overview": "🔍", "review": "🔍",
@@ -39,7 +24,6 @@ _SECTION_EMOJI = {
 
 
 def _pick_section_emoji(heading_text: str) -> str:
-    """Pick a contextual emoji for a section heading."""
     lower = heading_text.lower()
     for keyword, emoji in _SECTION_EMOJI.items():
         if keyword in lower:
@@ -47,15 +31,9 @@ def _pick_section_emoji(heading_text: str) -> str:
     return "▸"
 
 
-# ---------------------------------------------------------------------------
-# Public API
-# ---------------------------------------------------------------------------
-
 def markdown_to_telegram_html(text: str) -> str:
-    """Convert Markdown produced by Opus into beautiful Telegram HTML."""
     text = text.replace("\r\n", "\n")
 
-    # Step 1: Stash fenced code blocks
     code_blocks: list[str] = []
     def _stash_code(m: re.Match) -> str:
         lang = m.group(1) or ""
@@ -69,7 +47,6 @@ def markdown_to_telegram_html(text: str) -> str:
 
     text = re.sub(r"```(\w*)\n([\s\S]*?)```", _stash_code, text)
 
-    # Step 2: Stash inline code
     inline_codes: list[str] = []
     def _stash_inline(m: re.Match) -> str:
         inline_codes.append(f"<code>{_html_escape(m.group(1))}</code>")
@@ -77,17 +54,13 @@ def markdown_to_telegram_html(text: str) -> str:
 
     text = re.sub(r"`([^`\n]+)`", _stash_inline, text)
 
-    # Step 3: Escape HTML in remaining text
     text = _html_escape(text)
 
-    # Step 4: Tables → beautiful monospace blocks
     text = _convert_tables(text)
 
-    # Step 5: Headings → bold with emoji decoration
     def _heading_replace(m: re.Match) -> str:
         level = len(m.group(1))
         content = m.group(2).strip()
-        # Remove any existing emoji at start to avoid doubling
         clean = re.sub(r"^[\U0001F300-\U0001FAFF\U00002702-\U000027B0\U0000FE00-\U0000FE0F\u200d]+\s*", "", content)
         emoji = _pick_section_emoji(clean)
         if level == 1:
@@ -97,33 +70,24 @@ def markdown_to_telegram_html(text: str) -> str:
 
     text = re.sub(r"^(#{1,6})\s+(.+)$", _heading_replace, text, flags=re.MULTILINE)
 
-    # Step 6: Bold
     text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
     text = re.sub(r"__(.+?)__", r"<b>\1</b>", text)
 
-    # Step 7: Italic
     text = re.sub(r"(?<!\w)\*([^*\n]+?)\*(?!\w)", r"<i>\1</i>", text)
     text = re.sub(r"(?<!\w)_([^_\n]+?)_(?!\w)", r"<i>\1</i>", text)
 
-    # Step 8: Strikethrough
     text = re.sub(r"~~(.+?)~~", r"<s>\1</s>", text)
 
-    # Step 9: Links
     text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2">\1</a>', text)
 
-    # Step 10: Blockquotes → Telegram blockquote (beautiful)
     text = _convert_blockquotes(text)
 
-    # Step 11: Horizontal rules → clean separator
     text = re.sub(r"^[-*_]{3,}\s*$", "━━━━━━━━━━━━━━━━━━━━━", text, flags=re.MULTILINE)
 
-    # Step 12: Bullet lists with better bullets
     text = re.sub(r"^(\s*)[-*]\s+", lambda m: m.group(1) + "▸ ", text, flags=re.MULTILINE)
 
-    # Step 13: Collapse excessive blank lines
     text = re.sub(r"\n{4,}", "\n\n\n", text)
 
-    # Step 14: Restore stashed code
     for i, block in enumerate(code_blocks):
         text = text.replace(f"\x00CB{i}\x00", block)
     for i, code in enumerate(inline_codes):
@@ -132,12 +96,7 @@ def markdown_to_telegram_html(text: str) -> str:
     return text.strip()
 
 
-# ---------------------------------------------------------------------------
-# Table conversion → aligned monospace
-# ---------------------------------------------------------------------------
-
 def _convert_tables(text: str) -> str:
-    """Convert Markdown tables to aligned <pre> blocks."""
     lines = text.split("\n")
     result: list[str] = []
     table_lines: list[str] = []
@@ -164,7 +123,6 @@ def _convert_tables(text: str) -> str:
 
 
 def _render_table(lines: list[str]) -> str:
-    """Render table as a clean monospace block."""
     if not lines:
         return ""
 
@@ -172,7 +130,7 @@ def _render_table(lines: list[str]) -> str:
     for line in lines:
         cells = [c.strip() for c in line.strip("|").split("|")]
         if all(re.match(r"^[-:]+$", c.strip()) for c in cells if c.strip()):
-            continue  # Skip separator rows
+            continue
         rows.append(cells)
 
     if not rows:
@@ -198,12 +156,7 @@ def _render_table(lines: list[str]) -> str:
     return "<pre>" + "\n".join(formatted) + "</pre>"
 
 
-# ---------------------------------------------------------------------------
-# Blockquote conversion
-# ---------------------------------------------------------------------------
-
 def _convert_blockquotes(text: str) -> str:
-    """Convert > lines to Telegram <blockquote> blocks."""
     lines = text.split("\n")
     result: list[str] = []
     bq_lines: list[str] = []
@@ -232,15 +185,10 @@ def _convert_blockquotes(text: str) -> str:
     return "\n".join(result)
 
 
-# ---------------------------------------------------------------------------
-# HTML-aware message splitting
-# ---------------------------------------------------------------------------
-
 _PAIRED_TAGS = {"b", "i", "u", "s", "code", "pre", "a", "blockquote", "tg-spoiler"}
 
 
 def split_html_message(text: str, max_len: int = 4000) -> list[str]:
-    """Split HTML into chunks, closing/reopening tags across boundaries."""
     if len(text) <= max_len:
         return [text]
 
@@ -267,7 +215,6 @@ def split_html_message(text: str, max_len: int = 4000) -> list[str]:
 
 
 def _close_open_tags(html: str) -> tuple[str, str]:
-    """Close unclosed tags and return reopening string for next chunk."""
     tag_stack: list[str] = []
     open_tag_texts: list[str] = []
 

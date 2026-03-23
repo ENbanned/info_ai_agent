@@ -1,5 +1,3 @@
-"""Ingest worker: batches messages and writes to mem0."""
-
 import asyncio
 import time
 from datetime import datetime, timezone
@@ -13,7 +11,7 @@ from src.tg.bot import send_alert
 from contextlib import asynccontextmanager
 
 BATCH_SIZE = 8
-BATCH_TIMEOUT = 60  # seconds
+BATCH_TIMEOUT = 60
 MAX_CONCURRENT_CLASSIFY = 5
 
 
@@ -23,7 +21,6 @@ async def _noop_lock():
 
 
 async def ingest_worker(queue: asyncio.Queue, memory, bot, memory_lock: asyncio.Lock | None = None) -> None:
-    """Background task: consume messages from queue, classify, batch, and ingest."""
     buffer: list[ProcessedMessage] = []
     first_buffered_at: float | None = None
     semaphore = asyncio.Semaphore(MAX_CONCURRENT_CLASSIFY)
@@ -48,7 +45,6 @@ async def ingest_worker(queue: asyncio.Queue, memory, bot, memory_lock: asyncio.
                     logger.error(f"Urgent handler error: {r}")
             return
 
-        # RELEVANT → buffer
         buffer.append(msg)
         if first_buffered_at is None:
             first_buffered_at = time.monotonic()
@@ -57,7 +53,6 @@ async def ingest_worker(queue: asyncio.Queue, memory, bot, memory_lock: asyncio.
     pending_tasks: set[asyncio.Task] = set()
 
     while True:
-        # Always use a timeout so we can check buffer for flush
         timeout = BATCH_TIMEOUT
         if buffer and first_buffered_at is not None:
             elapsed = time.monotonic() - first_buffered_at
@@ -72,12 +67,10 @@ async def ingest_worker(queue: asyncio.Queue, memory, bot, memory_lock: asyncio.
                 first_buffered_at = None
             continue
 
-        # Classify concurrently but check buffer after
         task = asyncio.create_task(_classify_and_route(msg))
         pending_tasks.add(task)
         task.add_done_callback(pending_tasks.discard)
 
-        # Give tasks a moment to complete and fill buffer
         await asyncio.sleep(0)
 
         if len(buffer) >= BATCH_SIZE:
@@ -87,11 +80,9 @@ async def ingest_worker(queue: asyncio.Queue, memory, bot, memory_lock: asyncio.
 
 
 async def _flush_batch(batch: list[ProcessedMessage], memory, memory_lock: asyncio.Lock | None = None) -> None:
-    """Combine batch of messages and add to mem0."""
     channels = list({msg.channel_name for msg in batch})
     logger.info(f"📦 Batch ({len(batch)} msgs) │ {', '.join(channels)}")
 
-    # Show what's going into the batch
     for msg in batch:
         text_clean = msg.text.replace("\n", " ")
         logger.debug(f"   ├─ {msg.channel_name} │ {text_clean}")
@@ -123,8 +114,6 @@ async def _flush_batch(batch: list[ProcessedMessage], memory, memory_lock: async
 
 
 async def _ingest_urgent(msg: ProcessedMessage, memory, memory_lock: asyncio.Lock | None = None) -> None:
-    """Add a single urgent message to mem0."""
-    # Dedup detection: check if a very similar message was ingested recently
     try:
         dedup_results = await memory.search(
             msg.text[:200], user_id="trader", limit=3
@@ -139,7 +128,6 @@ async def _ingest_urgent(msg: ProcessedMessage, memory, memory_lock: asyncio.Loc
                 )
                 return
     except Exception as e:
-        # Dedup failure must not block the pipeline
         logger.debug(f"Dedup check failed (continuing): {e}")
 
     metadata = {
@@ -167,11 +155,9 @@ async def _ingest_urgent(msg: ProcessedMessage, memory, memory_lock: asyncio.Loc
 
 
 def _log_extraction_result(result: dict) -> None:
-    """Log what mem0 extracted — facts, entities, relationships."""
     if not result:
         return
 
-    # Vector store results (facts)
     memories = result.get("results", [])
     relations = result.get("relations", [])
 
@@ -180,7 +166,6 @@ def _log_extraction_result(result: dict) -> None:
 
     logger.info(f"🧠 Extracted │ {fact_count} facts, {rel_count} relationships")
 
-    # Show individual facts
     for mem in memories[:10]:
         text = mem.get("memory", mem.get("data", mem.get("text", "")))
         lifecycle = mem.get("metadata", {}).get("lifecycle_state", "")
@@ -188,7 +173,6 @@ def _log_extraction_result(result: dict) -> None:
         if text:
             logger.info(f"   fact │ • {text[:150]}{state_tag}")
 
-    # Show graph relationships
     if isinstance(relations, list):
         for rel in relations[:10]:
             if isinstance(rel, dict):

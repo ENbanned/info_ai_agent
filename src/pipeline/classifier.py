@@ -1,5 +1,3 @@
-"""Sonnet-based urgency classifier for crypto messages."""
-
 import os
 from typing import Literal
 
@@ -19,7 +17,6 @@ _ICONS = {"URGENT": "🔴", "RELEVANT": "🟢", "NOISE": "⚫"}
 
 
 async def classify(msg: ProcessedMessage) -> Classification:
-    """Classify a message as URGENT, RELEVANT, or NOISE using Sonnet."""
     prompt = CLASSIFICATION_PROMPT.format(
         channel_name=msg.channel_name,
         message_text=msg.text[:2000],

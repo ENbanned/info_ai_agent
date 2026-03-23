@@ -1,5 +1,3 @@
-"""Telegram channel listener with topic filtering."""
-
 import asyncio
 
 from loguru import logger
@@ -12,7 +10,6 @@ from src.pipeline.preprocessor import process_message
 
 
 def register_listener(client: Client, queue: asyncio.Queue, store: ChannelStore) -> None:
-    """Register the message handler on the user client."""
     channel_filter = store.build_channel_filter()
     topic_map = store.build_topic_map()
     name_map = store.build_name_map()
@@ -22,7 +19,6 @@ def register_listener(client: Client, queue: asyncio.Queue, store: ChannelStore)
     async def on_message(_client: Client, message: Message) -> None:
         chat_id = message.chat.id
 
-        # Topic filtering
         if chat_id in topic_map:
             thread_id = message.message_thread_id
             if thread_id not in topic_map[chat_id]:
@@ -30,17 +26,14 @@ def register_listener(client: Client, queue: asyncio.Queue, store: ChannelStore)
 
         channel_name = name_map.get(chat_id, "unknown")
 
-        # Resolve topic name
         topic_name = None
         if chat_id in topic_name_map and message.message_thread_id:
             topic_name = topic_name_map[chat_id].get(message.message_thread_id)
 
-        # Preprocess
         processed = await process_message(message, channel_name, topic_name)
         if processed is None:
             return
 
-        # Log incoming message
         topic_tag = f" │ {topic_name}" if topic_name else ""
         media_tag = " 📎" if processed.has_media else ""
         text_clean = processed.text.replace("\n", " ")

@@ -1,9 +1,8 @@
-"""Telegram bot client for sending alerts and reports."""
-
 from pathlib import Path
 
 from loguru import logger
 from pyrogram import Client, enums
+from html import escape as _esc
 
 from src.config import TG_CONFIG, BOT_CONFIG
 from src.tg.formatter import markdown_to_telegram_html, split_html_message
@@ -12,7 +11,6 @@ SESSIONS_DIR = str(Path(__file__).resolve().parent.parent.parent / "data" / "ses
 
 
 def get_bot_client() -> Client:
-    """Create a bot client for sending alerts and reports."""
     return Client(
         name="bot_session",
         workdir=SESSIONS_DIR,
@@ -23,8 +21,6 @@ def get_bot_client() -> Client:
 
 
 async def send_alert(bot: Client, text: str, channel_name: str) -> None:
-    """Send an urgent alert to the trader."""
-    from html import escape as _esc
     html_body = markdown_to_telegram_html(text[:4000])
     formatted_html = f"<b>\U0001f6a8 URGENT</b> | {_esc(channel_name)}\n\n{html_body}"
     try:
@@ -45,7 +41,6 @@ async def send_alert(bot: Client, text: str, channel_name: str) -> None:
 
 
 async def send_report_file(bot: Client, file_path: str, cycle_label: str) -> None:
-    """Send a .docx report file to the trader."""
     try:
         await bot.send_document(
             chat_id=BOT_CONFIG["owner_chat_id"],
@@ -58,7 +53,6 @@ async def send_report_file(bot: Client, file_path: str, cycle_label: str) -> Non
 
 
 async def send_report(bot: Client, report: str) -> None:
-    """Send a 6-hour digest report, splitting into chunks if needed."""
     chunks = _split_message(report, max_len=4000)
     logger.info(f"📤 Sending report │ {len(report)} chars, {len(chunks)} message(s)")
     for i, chunk in enumerate(chunks):
@@ -73,7 +67,6 @@ async def send_report(bot: Client, report: str) -> None:
 
 
 def _split_message(text: str, max_len: int = 4000) -> list[str]:
-    """Split a long message into chunks, preferring line breaks."""
     if len(text) <= max_len:
         return [text]
 

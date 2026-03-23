@@ -1,5 +1,3 @@
-"""Preprocessor: normalize raw Telegram messages into structured data."""
-
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,18 +20,12 @@ class ProcessedMessage:
 
 
 async def process_message(message: Message, channel_name: str, topic_name: str | None = None) -> ProcessedMessage | None:
-    """Extract text, media, and metadata from a raw pyrogram Message.
-
-    Returns None if the message has no usable content.
-    """
     parts: list[str] = []
 
-    # Main text content
     text = message.text or message.caption or ""
     if text:
         parts.append(text)
 
-    # Forwarded source (using forward_origin API)
     if message.forward_origin:
         origin = message.forward_origin
         if hasattr(origin, "sender_chat") and origin.sender_chat:
@@ -47,7 +39,6 @@ async def process_message(message: Message, channel_name: str, topic_name: str |
         elif hasattr(origin, "sender_user_name") and origin.sender_user_name:
             parts.insert(0, f"[Forwarded from: {origin.sender_user_name}]")
 
-    # Web page preview
     if message.web_page:
         wp = message.web_page
         wp_parts = []
@@ -58,7 +49,6 @@ async def process_message(message: Message, channel_name: str, topic_name: str |
         if wp_parts:
             parts.append(f"[Link preview: {' — '.join(wp_parts)}]")
 
-    # Handle photo — download and save path
     media_path = None
     has_media = False
     if message.photo:
@@ -69,9 +59,8 @@ async def process_message(message: Message, channel_name: str, topic_name: str |
             await message.download(file_name=str(dest))
             media_path = str(dest)
         except Exception:
-            pass  # Non-critical — we still have text
+            pass
 
-    # Skip messages with zero content
     combined = "\n".join(parts).strip()
     if not combined and not has_media:
         return None

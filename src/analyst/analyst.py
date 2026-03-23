@@ -1,5 +1,3 @@
-"""Opus analyst: produces 6-hour intelligence digest."""
-
 import asyncio
 import os
 import re
@@ -31,29 +29,14 @@ _REPORTS_DIR = _PROJECT_ROOT / "data" / "reports"
 _SKILLS_DIR = _PROJECT_ROOT / "data" / "skills"
 os.makedirs(_CWD, exist_ok=True)
 
-# ---------------------------------------------------------------------------
-# Token budget constants
-# ---------------------------------------------------------------------------
 MAX_PROMPT_TOKENS = 80_000
 
 
 def _estimate_tokens(text: str) -> int:
-    """Rough token estimate: 1 token ~ 4 chars for mixed en/ru text."""
     return len(text) // 4
 
 
-# ---------------------------------------------------------------------------
-# Main entry point
-# ---------------------------------------------------------------------------
-
 async def run_cycle(memory, cycle_start_ts: int, cycle_end_ts: int | None = None, memory_lock=None) -> tuple[str, str | None, str | None]:
-    """Run a single analyst cycle: pull data, analyze, return report.
-
-    cycle_start_ts: start of the 6h window (UTC timestamp)
-    cycle_end_ts: end of the 6h window (UTC timestamp). If None, uses current time.
-
-    Returns (report_text, docx_path_or_None, qa_supplement_or_None).
-    """
     if cycle_end_ts is None:
         cycle_end_ts = int(time.time())
 
@@ -63,19 +46,12 @@ async def run_cycle(memory, cycle_start_ts: int, cycle_end_ts: int | None = None
 
     cycle_id = datetime.fromtimestamp(cycle_start_ts, tz=timezone.utc).strftime("%Y%m%d_%H%M")
 
-    # ------------------------------------------------------------------
-    # 1. Pull facts for this 6h window — lifecycle-aware split
-    # ------------------------------------------------------------------
-    # NEW facts: created in this 6h window, not yet reported
     new_facts = await memory.get_by_lifecycle(
         user_id="trader",
         state=["active"],
         time_filter={"gte": cycle_start_ts, "lte": cycle_end_ts},
         limit=500,
     )
-    # REPORTED facts: from the PREVIOUS 24h (not current window).
-    # These were reported in earlier cycles — provide as compact context.
-    # We use a 24h lookback so the analyst sees recent history.
     reported_lookback = cycle_start_ts - 24 * 3600
     reported_facts = await memory.get_by_lifecycle(
         user_id="trader",
@@ -88,9 +64,6 @@ async def run_cycle(memory, cycle_start_ts: int, cycle_end_ts: int | None = None
         f"{len(reported_facts)} REPORTED (24h lookback)"
     )
 
-    # ------------------------------------------------------------------
-    # 2. Graph: top entities (replaces get_all full scan)
-    # ------------------------------------------------------------------
     try:
         top_entities = await asyncio.to_thread(
             memory.graph.get_top_entities,
@@ -101,9 +74,6 @@ async def run_cycle(memory, cycle_start_ts: int, cycle_end_ts: int | None = None
         top_entities = []
     logger.info(f"   Graph | {len(top_entities)} top entities")
 
-    # ------------------------------------------------------------------
-    # 3. Previous conclusions — full 24h + semantic older + adaptive
-    # ------------------------------------------------------------------
     previous = await _fetch_previous_conclusions(
         memory, cycle_start_ts, cycle_facts=new_facts
     )
@@ -112,9 +82,6 @@ async def run_cycle(memory, cycle_start_ts: int, cycle_end_ts: int | None = None
         f"{len(previous['older'])} older"
     )
 
-    # ------------------------------------------------------------------
-    # 4. Build prompt (lifecycle-aware, token-budgeted)
-    # ------------------------------------------------------------------
     prompt = _build_analyst_prompt(
         new_facts, reported_facts, top_entities, previous,
         cycle_start_ts, cycle_end_ts,
@@ -122,9 +89,6 @@ async def run_cycle(memory, cycle_start_ts: int, cycle_end_ts: int | None = None
     prompt_tokens = _estimate_tokens(prompt)
     logger.info(f"   Prompt | {len(prompt)} chars, ~{prompt_tokens} tokens -> Opus")
 
-    # ------------------------------------------------------------------
-    # 5. Prepare report output path (named by cycle end time in MSK)
-    # ------------------------------------------------------------------
     from datetime import timedelta
     msk = timezone(timedelta(hours=3))
     end_msk = datetime.fromtimestamp(cycle_end_ts, tz=msk)
@@ -134,21 +98,14 @@ async def run_cycle(memory, cycle_start_ts: int, cycle_end_ts: int | None = None
     report_dir.mkdir(parents=True, exist_ok=True)
     docx_path = str(report_dir / "report.docx")
 
-    # ------------------------------------------------------------------
-    # 5b. Run Opus with MCP memory tools
-    # ------------------------------------------------------------------
     logger.info("Opus analyzing | thinking + web research + memory search...")
     report = await _run_opus(prompt, memory, docx_path)
     logger.success(f"Opus done | {len(report)} chars report")
 
-    # Show first few lines of report
     for line in report.split("\n")[:5]:
         if line.strip():
             logger.info(f"   report | {line.strip()[:120]}")
 
-    # ------------------------------------------------------------------
-    # 5c. Update world model from analyst output
-    # ------------------------------------------------------------------
     try:
         wm = load_world_model()
         wm_update = parse_world_model_update(report)
@@ -165,34 +122,24 @@ async def run_cycle(memory, cycle_start_ts: int, cycle_end_ts: int | None = None
     except Exception as e:
         logger.error(f"World model update failed (non-fatal): {e}")
 
-    # Strip the <world_model_update> block from report before sending to user
     report = strip_world_model_block(report)
 
-    # ------------------------------------------------------------------
-    # 6. Check if .docx was created
-    # ------------------------------------------------------------------
     if os.path.exists(docx_path):
         logger.success(f"DOCX report | {docx_path}")
     else:
         logger.warning(f"DOCX not created | {docx_path}")
         docx_path = None
 
-    # ------------------------------------------------------------------
-    # 6b. QA validation (completeness + freshness)
-    # ------------------------------------------------------------------
     qa_supplement: str | None = None
     try:
         from src.analyst.qa import validate_report
 
-        # Collect URGENT facts for completeness check
-        # ingest.py stores urgency as "urgent" (lowercase) in metadata
         urgent_facts = [
             f for f in new_facts
             if f.get("metadata", {}).get("urgency", "").lower() == "urgent"
             or f.get("urgency", "").lower() == "urgent"
         ]
 
-        # Read previous report text for freshness check
         prev_report_text = _read_previous_report(cycle_end_ts)
 
         qa_result = await validate_report(
@@ -215,15 +162,9 @@ async def run_cycle(memory, cycle_start_ts: int, cycle_end_ts: int | None = None
     except Exception as e:
         logger.error(f"QA validation failed (report will be sent as-is): {e}")
 
-    # ------------------------------------------------------------------
-    # 7. Save conclusions back to mem0 using ANALYST_EXTRACTION_PROMPT
-    # ------------------------------------------------------------------
     logger.info(f"Saving analyst conclusions | cycle {cycle_id}")
     await _save_conclusions(memory, report, cycle_id, memory_lock)
 
-    # ------------------------------------------------------------------
-    # 8. Mark facts as reported (AFTER successful report generation)
-    # ------------------------------------------------------------------
     report_is_valid = len(report) > 500 and "Analyst cycle failed" not in report
     all_fact_ids = [f["id"] for f in new_facts + reported_facts if "id" in f]
     if all_fact_ids and report_is_valid:
@@ -238,21 +179,10 @@ async def run_cycle(memory, cycle_start_ts: int, cycle_end_ts: int | None = None
     return report, docx_path, qa_supplement
 
 
-# ---------------------------------------------------------------------------
-# Read previous report (for QA freshness check)
-# ---------------------------------------------------------------------------
-
 def _read_previous_report(cycle_end_ts: int) -> str | None:
-    """Read the plain text of the most recent previous .docx report.
-
-    Looks in /data/reports/ for the latest report directory BEFORE
-    the current cycle_end_ts.  Extracts text from the .docx via zipfile+XML.
-    Returns None if no previous report is found or reading fails.
-    """
     msk = timezone(timedelta(hours=3))
     current_dt = datetime.fromtimestamp(cycle_end_ts, tz=msk)
 
-    # Collect all report.docx paths with their datetime
     candidates: list[tuple[datetime, Path]] = []
     if not _REPORTS_DIR.exists():
         return None
@@ -279,7 +209,6 @@ def _read_previous_report(cycle_end_ts: int) -> str | None:
     if not candidates:
         return None
 
-    # Pick the most recent one
     candidates.sort(key=lambda x: x[0], reverse=True)
     _, prev_docx = candidates[0]
 
@@ -287,13 +216,11 @@ def _read_previous_report(cycle_end_ts: int) -> str | None:
 
 
 def _extract_text_from_docx(docx_path: Path) -> str | None:
-    """Extract plain text from a .docx file using zipfile + XML parsing."""
     try:
         with zipfile.ZipFile(docx_path, "r") as zf:
             with zf.open("word/document.xml") as xml_file:
                 tree = ElementTree.parse(xml_file)
         root = tree.getroot()
-        # Word namespace
         ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
         paragraphs: list[str] = []
         for p in root.iter(f"{{{ns['w']}}}p"):
@@ -310,25 +237,14 @@ def _extract_text_from_docx(docx_path: Path) -> str | None:
         return None
 
 
-# ---------------------------------------------------------------------------
-# Previous conclusions retrieval (with adaptive queries)
-# ---------------------------------------------------------------------------
-
 async def _fetch_previous_conclusions(
     memory,
     cycle_start_ts: int,
     cycle_facts: list | None = None,
 ) -> dict[str, list[str]]:
-    """Fetch previous analyst conclusions.
-
-    Recent (last 24h): ALL conclusions -- full context for continuity.
-    Older (>24h): semantic search for key themes -- long-term memory.
-    Adaptive: dynamic queries extracted from current cycle facts.
-    """
     recent = []
     older = []
 
-    # 1. Last 24h -- every conclusion, no losses
     ts_24h_ago = cycle_start_ts - 24 * 3600
     try:
         all_recent = await memory.get_all(
@@ -343,7 +259,6 @@ async def _fetch_previous_conclusions(
     except Exception as e:
         logger.warning(f"Failed to fetch recent analyst conclusions: {e}")
 
-    # 2. Older than 24h -- semantic search for strategic continuity
     seen = set(recent)
     queries = [
         "thesis prediction confirmed invalidated",
@@ -364,7 +279,6 @@ async def _fetch_previous_conclusions(
         except Exception as e:
             logger.warning(f"Older conclusions search failed for '{q}': {e}")
 
-    # 3. Adaptive queries from current cycle facts
     if cycle_facts:
         dynamic_queries = _extract_key_topics(cycle_facts)
         for q in dynamic_queries[:5]:
@@ -382,7 +296,6 @@ async def _fetch_previous_conclusions(
             except Exception as e:
                 logger.warning(f"Adaptive conclusions search failed for '{q}': {e}")
 
-    # Convert older items to text if they are dicts
     older_texts = []
     for item in older:
         if isinstance(item, dict):
@@ -394,11 +307,6 @@ async def _fetch_previous_conclusions(
 
 
 def _extract_key_topics(cycle_facts: list) -> list[str]:
-    """Extract key topics from current cycle facts for dynamic memory queries.
-
-    Simple heuristic: find $TICKER patterns, capitalized named entities,
-    and key crypto-related phrases. No LLM needed.
-    """
     sample_texts = [
         f.get("memory", f.get("data", ""))[:200]
         for f in cycle_facts[:20]
@@ -407,20 +315,16 @@ def _extract_key_topics(cycle_facts: list) -> list[str]:
 
     topics = []
 
-    # 1. Find $TICKER patterns (e.g., $BTC, $ETH, $SOL)
     tickers = re.findall(r"\$([A-Z]{2,10})", combined)
     for t in set(tickers):
         topics.append(f"{t} price movement analysis")
 
-    # 2. Find capitalized multi-word entities (e.g., "Federal Reserve", "Circle IPO")
     named_entities = re.findall(r"[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+", combined)
     for ne in set(named_entities):
-        if len(ne) > 5:  # filter out very short matches
+        if len(ne) > 5:
             topics.append(ne)
 
-    # 3. Find standalone all-caps words (likely tickers or acronyms)
     all_caps = re.findall(r"\b([A-Z]{3,8})\b", combined)
-    # Filter common English words that happen to be caps
     noise_words = {
         "THE", "AND", "FOR", "BUT", "NOT", "ALL", "ARE", "WAS",
         "HAS", "HAD", "HIS", "HER", "ITS", "OUR", "NEW", "OLD",
@@ -430,7 +334,6 @@ def _extract_key_topics(cycle_facts: list) -> list[str]:
         if w not in noise_words:
             topics.append(f"{w} developments")
 
-    # 4. Deduplicate and limit
     seen = set()
     unique_topics = []
     for t in topics:
@@ -442,16 +345,7 @@ def _extract_key_topics(cycle_facts: list) -> list[str]:
     return unique_topics[:10]
 
 
-# ---------------------------------------------------------------------------
-# Conclusions saving
-# ---------------------------------------------------------------------------
-
 async def _save_conclusions(memory, report: str, cycle_id: str, memory_lock=None) -> None:
-    """Save analyst conclusions using ANALYST_EXTRACTION_PROMPT.
-
-    Uses memory_lock to prevent concurrent memory.add() calls from
-    seeing the temporarily swapped extraction prompt.
-    """
     from contextlib import asynccontextmanager
 
     @asynccontextmanager
@@ -478,10 +372,6 @@ async def _save_conclusions(memory, report: str, cycle_id: str, memory_lock=None
             memory.config.custom_fact_extraction_prompt = original_prompt
 
 
-# ---------------------------------------------------------------------------
-# Prompt building (lifecycle-aware, token-budgeted)
-# ---------------------------------------------------------------------------
-
 def _build_analyst_prompt(
     new_facts: list,
     reported_facts: list,
@@ -490,11 +380,9 @@ def _build_analyst_prompt(
     cycle_start_ts: int,
     cycle_end_ts: int,
 ) -> str:
-    """Build the prompt for Opus analyst from lifecycle-separated data."""
     start_time = datetime.fromtimestamp(cycle_start_ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     end_time = datetime.fromtimestamp(cycle_end_ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
-    # --- Split URGENT from regular NEW facts ---
     urgent_facts = [
         f for f in new_facts
         if f.get("metadata", {}).get("urgency", "").lower() == "urgent"
@@ -502,7 +390,6 @@ def _build_analyst_prompt(
     ]
     regular_facts = [f for f in new_facts if f not in urgent_facts]
 
-    # --- Section: URGENT facts ---
     if urgent_facts:
         urgent_section = (
             f"## ⚡ URGENT ({len(urgent_facts)} items)\n"
@@ -517,16 +404,12 @@ def _build_analyst_prompt(
     else:
         urgent_section = ""
 
-    # --- Section: NEW facts by channel ---
     new_section = _format_facts_by_channel(regular_facts)
 
-    # --- Section: REPORTED facts (compact) ---
     reported_section = _format_reported_facts_compact(reported_facts)
 
-    # --- Section: Graph top entities ---
     graph_section = _format_graph_top_entities(top_entities)
 
-    # --- Section: Previous conclusions ---
     recent = previous.get("recent", [])
     older = previous.get("older", [])
 
@@ -544,7 +427,6 @@ def _build_analyst_prompt(
                 parts.append(f"{i}. {c}")
         prev_section = "\n".join(parts)
 
-    # --- Section: Media files ---
     media_section = ""
     media_paths = []
     for mem in new_facts:
@@ -561,7 +443,6 @@ def _build_analyst_prompt(
             + "\n".join(f"- {p}" for p in media_paths[:20])
         )
 
-    # --- Section: World Model ---
     world_model = load_world_model()
     world_model_section = format_world_model_for_prompt(world_model)
     logger.info(
@@ -570,7 +451,6 @@ def _build_analyst_prompt(
         f"{len(world_model.get('active_narratives', []))} narratives"
     )
 
-    # --- Assemble full prompt ---
     prompt = f"""\
 Analyze the following crypto intelligence collected between {start_time} and {end_time}.
 
@@ -605,7 +485,6 @@ If any claims seem significant but unverified, use WebSearch to verify them.
 If media files are listed and seem relevant to key developments, use Read to examine them.
 {WORLD_MODEL_UPDATE_INSTRUCTION}"""
 
-    # --- Token budget enforcement ---
     original_tokens = _estimate_tokens(prompt)
     if original_tokens > MAX_PROMPT_TOKENS:
         logger.warning(
@@ -635,20 +514,12 @@ def _truncate_prompt(
     world_model_instruction: str = "",
     urgent_section: str = "",
 ) -> str:
-    """Rebuild prompt with progressively truncated sections to fit token budget.
-
-    Truncation priority (least important first):
-    1. REPORTED facts
-    2. Graph context
-    3. NEW facts (last resort)
-    """
     start_time = datetime.fromtimestamp(cycle_start_ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     end_time = datetime.fromtimestamp(cycle_end_ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
     recent = previous.get("recent", [])
     older = previous.get("older", [])
 
-    # Build previous section (keep as-is, it's bounded)
     if not recent and not older:
         prev_section = "No previous analyst conclusions available (first cycle)."
     else:
@@ -663,7 +534,6 @@ def _truncate_prompt(
                 parts.append(f"{i}. {c}")
         prev_section = "\n".join(parts)
 
-    # Step 1: Try with truncated REPORTED facts (keep only first 20)
     truncated_reported = reported_facts[:20]
     reported_section = _format_reported_facts_compact(truncated_reported)
     new_section = _format_facts_by_channel(new_facts)
@@ -677,7 +547,6 @@ def _truncate_prompt(
     if _estimate_tokens(prompt) <= MAX_PROMPT_TOKENS:
         return prompt
 
-    # Step 2: Remove REPORTED facts entirely, truncate graph to 15 entities
     reported_section = "(Truncated to fit token budget. Use search_memory for reported facts.)"
     graph_section = _format_graph_top_entities(top_entities[:15])
 
@@ -689,7 +558,6 @@ def _truncate_prompt(
     if _estimate_tokens(prompt) <= MAX_PROMPT_TOKENS:
         return prompt
 
-    # Step 3: Truncate NEW facts to first 200
     truncated_new = new_facts[:200]
     new_section = _format_facts_by_channel(truncated_new)
     graph_section = _format_graph_top_entities(top_entities[:10])
@@ -716,7 +584,6 @@ def _assemble_prompt_text(
     world_model_instruction: str = "",
     urgent_section: str = "",
 ) -> str:
-    """Assemble the final prompt string from pre-formatted sections."""
     reported_count = len(reported_facts) if isinstance(reported_facts, list) else 0
     wm_block = f"\n{world_model_section}\n" if world_model_section else ""
     wm_instr = f"\n{world_model_instruction}" if world_model_instruction else ""
@@ -751,16 +618,10 @@ If any claims seem significant but unverified, use WebSearch to verify them.
 If media files are listed and seem relevant to key developments, use Read to examine them.{wm_instr}"""
 
 
-# ---------------------------------------------------------------------------
-# Formatting helpers
-# ---------------------------------------------------------------------------
-
 def _format_facts_by_channel(results: list[dict]) -> str:
-    """Group facts by source channel for better analyst readability."""
     if not results:
         return "No intelligence collected this cycle."
 
-    # Group by channel
     by_channel: dict[str, list[str]] = {}
     uncategorized = []
 
@@ -798,7 +659,6 @@ def _format_facts_by_channel(results: list[dict]) -> str:
 
 
 def _format_reported_facts_compact(results: list) -> str:
-    """Format reported facts as one-liners for background context."""
     if not results:
         return "(none)"
 
@@ -807,9 +667,7 @@ def _format_reported_facts_compact(results: list) -> str:
         text = r.get("memory", r.get("data", ""))
         if not text:
             continue
-        # Truncate to first sentence or 150 characters
         if len(text) > 150:
-            # Try to cut at sentence boundary
             cut = text[:150].rsplit(".", 1)
             short = cut[0] + "." if len(cut) > 1 and len(cut[0]) > 30 else text[:150] + "..."
         else:
@@ -823,12 +681,6 @@ def _format_reported_facts_compact(results: list) -> str:
 
 
 def _format_graph_top_entities(top_entities: list) -> str:
-    """Format top entities from graph.get_top_entities() output.
-
-    Input: list of dicts with keys:
-        name, entity_type, mentions, lifecycle_state,
-        relationships: [{source, relationship, target}]
-    """
     if not top_entities:
         return "No graph data available."
 
@@ -856,19 +708,11 @@ def _format_graph_top_entities(top_entities: list) -> str:
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------------------
-# Opus execution
-# ---------------------------------------------------------------------------
-
 async def _run_opus(prompt: str, memory, docx_path: str) -> str:
-    """Run Opus with web search, Read tool, MCP memory tools, Bash/Write for docx."""
-    # SDK closes stdin after this timeout when MCP servers are present.
-    # Default 60s is too short -- Opus needs 20-30 min. Set to 40 min.
     os.environ["CLAUDE_CODE_STREAM_CLOSE_TIMEOUT"] = "2400000"
 
     mcp_server = create_memory_server(memory)
 
-    # Load docx skill for system prompt
     docx_skill = ""
     docx_skill_path = _SKILLS_DIR / "docx_create.md"
     if docx_skill_path.exists():
@@ -923,7 +767,6 @@ Include a header with "Crypto Intelligence Digest" and a footer with page number
                         report = block.text
     except Exception as e:
         logger.error(f"Opus analyst failed: {e}")
-        # Only overwrite if we got nothing useful before the crash
         if len(report) < 200:
             report = f"Analyst cycle failed: {e}"
         else:

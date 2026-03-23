@@ -38,5 +38,4 @@ MEM0_CONFIG = {
     },
 }
 
-# Inject custom graph prompt into graph_store config
 MEM0_CONFIG["graph_store"]["custom_prompt"] = GRAPH_CUSTOM_PROMPT

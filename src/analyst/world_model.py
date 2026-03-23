@@ -1,15 +1,3 @@
-"""Persistent world model — structured knowledge accumulated across analyst cycles.
-
-The world model is a JSON file on disk (data/world_model.json) that the analyst
-updates every cycle. It stores market regime, active theses, narratives,
-macro environment, source reliability notes, and meta-cognitive observations.
-
-The analyst receives the current world model in its prompt and returns a
-structured update block (<world_model_update>...</world_model_update>) at the
-end of each report.  This module handles loading, saving, formatting for the
-prompt, parsing the update block, and applying changes.
-"""
-
 import copy
 import json
 import re
@@ -18,76 +6,43 @@ from pathlib import Path
 
 from loguru import logger
 
-# ---------------------------------------------------------------------------
-# Path
-# ---------------------------------------------------------------------------
 WORLD_MODEL_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "world_model.json"
 
-# ---------------------------------------------------------------------------
-# Default (empty) world model — used on first launch
-# ---------------------------------------------------------------------------
 DEFAULT_WORLD_MODEL: dict = {
     "version": 1,
     "last_updated": 0,
     "last_cycle_id": "",
 
     "market_regime": {
-        "current": "unknown",        # bull / bear / sideways / crisis / transition
+        "current": "unknown",
         "confidence": 0.5,
         "since": "",
         "description": "",
     },
 
-    "active_theses": [
-        # {
-        #     "id": "thesis_001",
-        #     "name": "BTC Safe Haven",
-        #     "state": "active",             # active / confirmed / invalidated / developing / retired
-        #     "confidence": 0.5,
-        #     "direction": "stable",          # up / down / stable
-        #     "created_cycle": "",
-        #     "last_updated_cycle": "",
-        #     "history": [],                  # [{cycle_id, confidence, note}]
-        #     "falsification_criteria": "",
-        #     "description": "",
-        # }
-    ],
+    "active_theses": [],
 
-    "active_narratives": [
-        # {
-        #     "name": "RWA Tokenization",
-        #     "phase": "growth",             # emerging / growth / mature / declining / dead
-        #     "key_catalysts": [],
-        #     "last_updated_cycle": "",
-        # }
-    ],
+    "active_narratives": [],
 
     "macro_environment": {
         "fed_rate": "",
         "inflation_trend": "",
         "oil_situation": "",
         "geopolitical_risks": [],
-        "key_dates": [],                     # [{date, event, impact}]
+        "key_dates": [],
     },
 
-    "source_reliability": {
-        # "channel_name": {"accuracy_notes": "", "bias": "", "speed": ""}
-    },
+    "source_reliability": {},
 
     "meta_cognitive": {
-        "known_biases": [],                  # Systematic errors the analyst has noticed in itself
-        "learned_patterns": [],              # Patterns that proved reliable
-        "failed_patterns": [],               # Patterns that didn't work
+        "known_biases": [],
+        "learned_patterns": [],
+        "failed_patterns": [],
     },
 }
 
 
-# ---------------------------------------------------------------------------
-# Load / Save
-# ---------------------------------------------------------------------------
-
 def load_world_model() -> dict:
-    """Load world model from disk. Returns default if file does not exist."""
     if WORLD_MODEL_PATH.exists():
         try:
             data = json.loads(WORLD_MODEL_PATH.read_text(encoding="utf-8"))
@@ -99,7 +54,6 @@ def load_world_model() -> dict:
 
 
 def save_world_model(model: dict) -> None:
-    """Save world model to disk."""
     model["last_updated"] = int(time.time())
     WORLD_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
     WORLD_MODEL_PATH.write_text(
@@ -114,17 +68,11 @@ def save_world_model(model: dict) -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# Format for analyst prompt
-# ---------------------------------------------------------------------------
-
 def format_world_model_for_prompt(model: dict) -> str:
-    """Format the world model as readable Markdown for the analyst prompt."""
 
     parts: list[str] = []
     parts.append("## Your World Model (accumulated knowledge)\n")
 
-    # --- Market Regime ---
     regime = model.get("market_regime", {})
     regime_name = regime.get("current", "unknown").upper()
     regime_conf = regime.get("confidence", 0.5)
@@ -137,7 +85,6 @@ def format_world_model_for_prompt(model: dict) -> str:
         f"{since_str}{desc_str}\n"
     )
 
-    # --- Active Theses ---
     theses = model.get("active_theses", [])
     active_theses = [t for t in theses if t.get("state") not in ("retired", "invalidated", "confirmed")]
     resolved_theses = [t for t in theses if t.get("state") in ("invalidated", "confirmed")]
@@ -157,7 +104,7 @@ def format_world_model_for_prompt(model: dict) -> str:
 
     if resolved_theses:
         parts.append(f"### Recently Resolved Theses ({len(resolved_theses)}):")
-        for t in resolved_theses[-5:]:  # last 5 resolved
+        for t in resolved_theses[-5:]:
             state = t.get("state", "?").upper()
             name = t.get("name", "Unnamed")
             parts.append(f"- [{state}] {name}")
@@ -166,7 +113,6 @@ def format_world_model_for_prompt(model: dict) -> str:
     if not theses:
         parts.append("### Active Theses: none yet (first cycles)\n")
 
-    # --- Active Narratives ---
     narratives = model.get("active_narratives", [])
     if narratives:
         parts.append(f"### Active Narratives ({len(narratives)}):")
@@ -180,7 +126,6 @@ def format_world_model_for_prompt(model: dict) -> str:
     else:
         parts.append("### Active Narratives: none tracked yet\n")
 
-    # --- Macro Environment ---
     macro = model.get("macro_environment", {})
     macro_lines = []
     if macro.get("fed_rate"):
@@ -205,7 +150,6 @@ def format_world_model_for_prompt(model: dict) -> str:
     else:
         parts.append("### Macro Environment: no data yet\n")
 
-    # --- Source Reliability ---
     sources = model.get("source_reliability", {})
     if sources:
         parts.append(f"### Source Reliability Notes ({len(sources)} sources):")
@@ -221,7 +165,6 @@ def format_world_model_for_prompt(model: dict) -> str:
             parts.append(f"- {channel}: {detail}")
         parts.append("")
 
-    # --- Meta-Cognitive ---
     meta = model.get("meta_cognitive", {})
     has_meta = False
 
@@ -252,10 +195,6 @@ def format_world_model_for_prompt(model: dict) -> str:
 
     return "\n".join(parts)
 
-
-# ---------------------------------------------------------------------------
-# World model update instruction (appended to analyst prompt)
-# ---------------------------------------------------------------------------
 
 WORLD_MODEL_UPDATE_INSTRUCTION = """\
 
@@ -309,10 +248,6 @@ Rules:
 """
 
 
-# ---------------------------------------------------------------------------
-# Parse world model update from report text
-# ---------------------------------------------------------------------------
-
 _WM_UPDATE_RE = re.compile(
     r"<world_model_update>\s*(\{.*?\})\s*</world_model_update>",
     re.DOTALL,
@@ -320,10 +255,6 @@ _WM_UPDATE_RE = re.compile(
 
 
 def parse_world_model_update(report_text: str) -> dict | None:
-    """Extract world model update JSON from analyst report text.
-
-    Returns the parsed dict, or None if not found / invalid JSON.
-    """
     match = _WM_UPDATE_RE.search(report_text)
     if not match:
         logger.warning("World model update block not found in report")
@@ -340,10 +271,6 @@ def parse_world_model_update(report_text: str) -> dict | None:
 
 
 def strip_world_model_block(report_text: str) -> str:
-    """Remove <world_model_update>...</world_model_update> block from report text.
-
-    This must be called before sending the report to Telegram / the user.
-    """
     cleaned = re.sub(
         r"\s*<world_model_update>.*?</world_model_update>\s*",
         "\n",
@@ -353,23 +280,13 @@ def strip_world_model_block(report_text: str) -> str:
     return cleaned.strip()
 
 
-# ---------------------------------------------------------------------------
-# Apply update to model
-# ---------------------------------------------------------------------------
-
 def apply_world_model_update(model: dict, update: dict, cycle_id: str) -> dict:
-    """Apply the analyst's structured update to the world model.
-
-    Mutates and returns *model*.
-    """
-    # --- Market regime ---
     if "market_regime" in update:
         mr = update["market_regime"]
         for key in ("current", "confidence", "since", "description"):
             if key in mr:
                 model["market_regime"][key] = mr[key]
 
-    # --- Thesis updates (existing theses) ---
     for tu in update.get("thesis_updates", []):
         name = tu.get("name", "")
         if not name:
@@ -385,7 +302,6 @@ def apply_world_model_update(model: dict, update: dict, cycle_id: str) -> dict:
                 if "state" in tu:
                     thesis["state"] = tu["state"]
                 thesis["last_updated_cycle"] = cycle_id
-                # Append to history
                 thesis.setdefault("history", []).append({
                     "cycle_id": cycle_id,
                     "confidence": tu.get("confidence", thesis.get("confidence")),
@@ -394,16 +310,13 @@ def apply_world_model_update(model: dict, update: dict, cycle_id: str) -> dict:
                 break
         if not found:
             logger.debug(f"Thesis update for unknown thesis '{name}', treating as new")
-            # Treat as new thesis
             new_t = _make_thesis(name, tu, cycle_id)
             model.setdefault("active_theses", []).append(new_t)
 
-    # --- New theses ---
     for nt in update.get("new_theses", []):
         name = nt.get("name", "")
         if not name:
             continue
-        # Check for duplicates (case-insensitive)
         existing_names = {t.get("name", "").lower() for t in model.get("active_theses", [])}
         if name.lower() in existing_names:
             logger.debug(f"New thesis '{name}' already exists, skipping")
@@ -411,7 +324,6 @@ def apply_world_model_update(model: dict, update: dict, cycle_id: str) -> dict:
         new_t = _make_thesis(name, nt, cycle_id)
         model.setdefault("active_theses", []).append(new_t)
 
-    # --- Retired theses ---
     for retired_name in update.get("retired_theses", []):
         for thesis in model.get("active_theses", []):
             if thesis.get("name", "").lower() == retired_name.lower():
@@ -419,7 +331,6 @@ def apply_world_model_update(model: dict, update: dict, cycle_id: str) -> dict:
                 thesis["last_updated_cycle"] = cycle_id
                 break
 
-    # --- Narrative updates ---
     for nu in update.get("narrative_updates", []):
         name = nu.get("name", "")
         if not name:
@@ -443,7 +354,6 @@ def apply_world_model_update(model: dict, update: dict, cycle_id: str) -> dict:
                 "last_updated_cycle": cycle_id,
             })
 
-    # --- New narratives ---
     for nn in update.get("new_narratives", []):
         name = nn.get("name", "")
         if not name:
@@ -459,7 +369,6 @@ def apply_world_model_update(model: dict, update: dict, cycle_id: str) -> dict:
             "last_updated_cycle": cycle_id,
         })
 
-    # --- Macro update ---
     if "macro_update" in update:
         mu = update["macro_update"]
         macro = model.setdefault("macro_environment", {})
@@ -471,13 +380,11 @@ def apply_world_model_update(model: dict, update: dict, cycle_id: str) -> dict:
         if "key_dates" in mu:
             macro["key_dates"] = mu["key_dates"]
 
-    # --- Source reliability updates ---
     if "source_reliability_updates" in update:
         sr = model.setdefault("source_reliability", {})
         for channel, info in update["source_reliability_updates"].items():
             sr[channel] = info
 
-    # --- Meta-cognitive note ---
     note = update.get("meta_cognitive_note")
     if note and isinstance(note, str) and note.strip():
         meta = model.setdefault("meta_cognitive", {
@@ -486,22 +393,15 @@ def apply_world_model_update(model: dict, update: dict, cycle_id: str) -> dict:
             "failed_patterns": [],
         })
         meta.setdefault("known_biases", []).append(f"[{cycle_id}] {note.strip()}")
-        # Keep max 20 bias notes
         if len(meta["known_biases"]) > 20:
             meta["known_biases"] = meta["known_biases"][-20:]
 
-    # --- Bookkeeping ---
     model["last_cycle_id"] = cycle_id
 
     return model
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 def _make_thesis(name: str, data: dict, cycle_id: str) -> dict:
-    """Create a thesis dict from update data."""
     return {
         "id": f"thesis_{int(time.time())}_{name[:16].replace(' ', '_').lower()}",
         "name": name,

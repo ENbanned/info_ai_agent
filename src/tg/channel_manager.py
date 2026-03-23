@@ -1,5 +1,3 @@
-"""Channel management commands for the Telegram bot."""
-
 from loguru import logger
 from pyrogram import Client, filters, enums
 from pyrogram.types import Message
@@ -11,10 +9,7 @@ OWNER = BOT_CONFIG["owner_chat_id"]
 
 
 def register_channel_manager(bot: Client, user: Client, store: ChannelStore) -> None:
-    """Register /add, /remove, /channels, /pause, /resume commands."""
 
-    # State for topic name prompting:
-    # owner_id -> {"channel_id": int, "thread_id": int, "new_channel": Channel | None}
     _pending_topic: dict[int, dict] = {}
 
     @bot.on_message(filters.command("add") & filters.user(OWNER) & filters.private)
@@ -40,7 +35,6 @@ def register_channel_manager(bot: Client, user: Client, store: ChannelStore) -> 
         existing = store.get(resolved.id)
 
         if existing and parsed.thread_id:
-            # Channel exists — check if topic is new
             if parsed.thread_id in existing.topics.values():
                 await message.reply_text(f"Topic already tracked in <b>{existing.name}</b>", parse_mode=enums.ParseMode.HTML)
                 return
@@ -60,7 +54,6 @@ def register_channel_manager(bot: Client, user: Client, store: ChannelStore) -> 
             await message.reply_text(f"Already tracked: <b>{existing.name}</b>", parse_mode=enums.ParseMode.HTML)
             return
 
-        # New channel
         if parsed.thread_id:
             _pending_topic[OWNER] = {
                 "channel_id": resolved.id,
@@ -124,7 +117,6 @@ def register_channel_manager(bot: Client, user: Client, store: ChannelStore) -> 
 
         text = "\n".join(lines)
 
-        # Split if too long for Telegram
         if len(text) > 4000:
             mid = len(lines) // 2
             part1 = "\n".join(lines[:mid])
@@ -170,14 +162,12 @@ def register_channel_manager(bot: Client, user: Client, store: ChannelStore) -> 
         else:
             await message.reply_text(f"Already active: <b>{ch.name}</b>", parse_mode=enums.ParseMode.HTML)
 
-    # Topic name prompt handler — intercepts text messages when waiting for a name
     @bot.on_message(filters.user(OWNER) & filters.private, group=-1)
     async def handle_pending_topic(_client: Client, message: Message) -> None:
         if OWNER not in _pending_topic:
             message.continue_propagation()
             return
 
-        # Don't intercept commands — cancel pending state and let the command through
         if message.text and message.text.startswith("/"):
             _pending_topic.pop(OWNER, None)
             message.continue_propagation()
@@ -195,7 +185,6 @@ def register_channel_manager(bot: Client, user: Client, store: ChannelStore) -> 
         new_channel = pending["new_channel"]
 
         if new_channel:
-            # Replace placeholder topic name with user-provided name
             new_channel.topics = {topic_name: thread_id}
             store.add(new_channel)
             at = f" · @{new_channel.username}" if new_channel.username else ""

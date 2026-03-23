@@ -1,17 +1,14 @@
-"""Loguru configuration for the crypto intelligence system."""
-
 import logging
 import sys
 from datetime import time, timedelta, timezone
 
 from loguru import logger
 
+
 MSK = timezone(timedelta(hours=3))
 
-# Remove default loguru handler
 logger.remove()
 
-# Main handler — colorful, structured
 logger.add(
     sys.stdout,
     format=(
@@ -22,7 +19,6 @@ logger.add(
     colorize=True,
 )
 
-# File handler — full detail, daily rotation, compress after 14 days
 logger.add(
     "data/logs/system.log",
     format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} | {message}",
@@ -34,8 +30,6 @@ logger.add(
 
 
 class InterceptHandler(logging.Handler):
-    """Route stdlib logging to loguru."""
-
     def emit(self, record: logging.LogRecord) -> None:
         try:
             level = logger.level(record.levelname).name
@@ -49,8 +43,7 @@ class InterceptHandler(logging.Handler):
 
 
 def setup_logging() -> None:
-    """Intercept all stdlib logging and route to loguru."""
     logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
-    # Silence noisy libraries
+
     for name in ("pyrogram", "pyrogram.session", "pyrogram.connection", "httpx", "httpcore", "neo4j"):
         logging.getLogger(name).setLevel(logging.WARNING)

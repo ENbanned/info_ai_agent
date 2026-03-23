@@ -1,5 +1,3 @@
-"""All prompt templates for the crypto news intelligence pipeline."""
-
 CRYPTO_EXTRACTION_PROMPT = """\
 You are an intelligence analyst extracting structured knowledge from Telegram channel messages.
 

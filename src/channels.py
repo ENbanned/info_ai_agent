@@ -1,5 +1,3 @@
-"""Dynamic channel management with persistence and live filter mutation."""
-
 import json
 import re
 from dataclasses import dataclass, field, asdict
@@ -31,15 +29,6 @@ class ParsedLink:
 
 
 def parse_tg_link(url: str) -> ParsedLink | None:
-    """Parse a t.me link into components.
-
-    Supported formats:
-      t.me/username              -> public channel
-      t.me/username/123          -> public, message
-      t.me/username/45/123       -> public, topic + message
-      t.me/c/ID/123             -> private, message
-      t.me/c/ID/45/123          -> private, topic + message
-    """
     url = url.strip()
     m = re.match(r"(?:https?://)?(?:www\.)?t\.me/(.+)", url)
     if not m:
@@ -51,7 +40,6 @@ def parse_tg_link(url: str) -> ParsedLink | None:
         return None
 
     if parts[0] == "c":
-        # Private channel: t.me/c/ID/...
         if len(parts) < 3:
             return None
         try:
@@ -75,7 +63,6 @@ def parse_tg_link(url: str) -> ParsedLink | None:
             except ValueError:
                 return None
     else:
-        # Public channel: t.me/username/...
         username = parts[0]
         if len(parts) == 1:
             return ParsedLink(username=username)
@@ -98,7 +85,6 @@ def parse_tg_link(url: str) -> ParsedLink | None:
 
 
 async def resolve_channel(user_client: Client, parsed: ParsedLink) -> Channel | None:
-    """Resolve a ParsedLink to a Channel via the user client."""
     try:
         if parsed.username:
             chat = await user_client.get_chat(parsed.username)
@@ -124,8 +110,6 @@ async def resolve_channel(user_client: Client, parsed: ParsedLink) -> Channel | 
 
 
 class ChannelStore:
-    """Persistent channel store with live filter/map mutation."""
-
     def __init__(self):
         self._channels: dict[int, Channel] = {}
         self._filter: filters.chat | None = None
@@ -133,8 +117,6 @@ class ChannelStore:
         self._name_map: dict[int, str] | None = None
         self._topic_name_map: dict[int, dict[int, str]] | None = None
         self._load()
-
-    # ---- persistence ----
 
     def _load(self):
         if DATA_PATH.exists():
@@ -149,8 +131,8 @@ class ChannelStore:
                 logger.warning(f"Corrupted {DATA_PATH.name}, re-migrating: {e}")
         self._migrate()
 
+
     def _migrate(self):
-        """Auto-migrate from config.json sources on first run."""
         try:
             with open(CONFIG_PATH) as f:
                 config = json.load(f)
@@ -189,12 +171,11 @@ class ChannelStore:
         self._save()
         logger.success(f"Migrated {len(self._channels)} channels from config.json")
 
+
     def _save(self):
         DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
         data = [asdict(ch) for ch in self._channels.values()]
         DATA_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2))
-
-    # ---- builder methods (called once at startup) ----
 
     def build_channel_filter(self) -> filters.chat:
         active_ids = [ch.id for ch in self._channels.values() if not ch.paused]
@@ -204,6 +185,7 @@ class ChannelStore:
         cf.clear()
         return cf
 
+
     def build_topic_map(self) -> dict[int, set[int]]:
         result: dict[int, set[int]] = {}
         for ch in self._channels.values():
@@ -211,8 +193,10 @@ class ChannelStore:
                 result[ch.id] = set(ch.topics.values())
         return result
 
+
     def build_name_map(self) -> dict[int, str]:
         return {ch.id: ch.name for ch in self._channels.values()}
+
 
     def build_topic_name_map(self) -> dict[int, dict[int, str]]:
         result: dict[int, dict[int, str]] = {}
@@ -221,21 +205,21 @@ class ChannelStore:
                 result[ch.id] = {v: k for k, v in ch.topics.items()}
         return result
 
+
     def attach_listener(self, channel_filter, topic_map, name_map, topic_name_map):
-        """Store references to the mutable objects used by the listener handler."""
         self._filter = channel_filter
         self._topic_map = topic_map
         self._name_map = name_map
         self._topic_name_map = topic_name_map
 
-    # ---- lookups ----
-
     @property
     def channels(self) -> dict[int, Channel]:
         return self._channels
 
+
     def get(self, channel_id: int) -> Channel | None:
         return self._channels.get(channel_id)
+
 
     def find_by_name(self, name: str) -> Channel | None:
         name_lower = name.lower()
@@ -244,6 +228,7 @@ class ChannelStore:
                 return ch
         return None
 
+
     def find_by_username(self, username: str) -> Channel | None:
         username = username.lstrip("@").lower()
         for ch in self._channels.values():
@@ -251,17 +236,15 @@ class ChannelStore:
                 return ch
         return None
 
+
     def find(self, query: str) -> Channel | None:
-        """Find a channel by ID, username, link, or name."""
         query = query.strip()
 
-        # Try as channel ID
         try:
             return self._channels.get(int(query))
         except ValueError:
             pass
 
-        # Try as t.me link
         if "t.me/" in query:
             parsed = parse_tg_link(query)
             if parsed:
@@ -270,14 +253,10 @@ class ChannelStore:
                 if parsed.username:
                     return self.find_by_username(parsed.username)
 
-        # Try as username
         if query.startswith("@"):
             return self.find_by_username(query)
 
-        # Try as name
         return self.find_by_name(query)
-
-    # ---- live mutations ----
 
     def add(self, channel: Channel) -> None:
         self._channels[channel.id] = channel
@@ -288,6 +267,7 @@ class ChannelStore:
             if channel.topics:
                 self._topic_map[channel.id] = set(channel.topics.values())
                 self._topic_name_map[channel.id] = {v: k for k, v in channel.topics.items()}
+
 
     def remove(self, channel_id: int) -> Channel | None:
         ch = self._channels.pop(channel_id, None)
@@ -301,6 +281,7 @@ class ChannelStore:
             self._topic_name_map.pop(channel_id, None)
         return ch
 
+
     def pause(self, channel_id: int) -> bool:
         ch = self._channels.get(channel_id)
         if not ch or ch.paused:
@@ -311,6 +292,7 @@ class ChannelStore:
             self._filter.discard(channel_id)
             self._topic_map.pop(channel_id, None)
         return True
+
 
     def resume(self, channel_id: int) -> bool:
         ch = self._channels.get(channel_id)
@@ -326,6 +308,7 @@ class ChannelStore:
                 if channel_id not in self._topic_name_map:
                     self._topic_name_map[channel_id] = {v: k for k, v in ch.topics.items()}
         return True
+
 
     def add_topic(self, channel_id: int, name: str, thread_id: int) -> bool:
         ch = self._channels.get(channel_id)

@@ -1,9 +1,3 @@
-"""Handler for /ask command — interactive Q&A with Opus via Telegram.
-
-/ask <question> — starts a new Opus session.
-Reply to bot's answer — continues the same session (resume).
-"""
-
 import os
 
 from loguru import logger
@@ -15,12 +9,10 @@ from src.pipeline.prompts import ASK_SYSTEM_PROMPT
 from src.analyst.memory_tools import create_memory_server
 from src.tg.formatter import markdown_to_telegram_html, split_html_message
 
-# Maps bot reply message_id → session_id for resume
 _sessions: dict[int, str] = {}
 
 
 def _build_options(memory, resume_id: str | None = None) -> ClaudeAgentOptions:
-    """Build ClaudeAgentOptions with MCP + web tools, optionally resuming a session."""
     mcp_server = create_memory_server(memory)
 
     options = ClaudeAgentOptions(
@@ -44,7 +36,6 @@ def _build_options(memory, resume_id: str | None = None) -> ClaudeAgentOptions:
 
 
 async def _run_ask_query(question: str, memory, resume_id: str | None = None) -> tuple[str, str | None]:
-    """Run Opus query. Returns (answer, session_id)."""
     os.environ["CLAUDE_CODE_STREAM_CLOSE_TIMEOUT"] = "2400000"
 
     options = _build_options(memory, resume_id)
@@ -73,7 +64,6 @@ async def _run_ask_query(question: str, memory, resume_id: str | None = None) ->
 
 
 def _split_plain(text: str, max_len: int = 4000) -> list[str]:
-    """Split plain text into chunks, preferring line breaks."""
     if len(text) <= max_len:
         return [text]
 
@@ -91,8 +81,6 @@ def _split_plain(text: str, max_len: int = 4000) -> list[str]:
 
 
 async def _send_answer(message, answer: str, session_id: str | None) -> None:
-    """Send answer chunks as Telegram HTML with plain-text fallback."""
-    # Convert Markdown -> Telegram HTML and split respecting tags
     html_answer = markdown_to_telegram_html(answer)
     chunks = split_html_message(html_answer, max_len=4000)
 
@@ -104,7 +92,6 @@ async def _send_answer(message, answer: str, session_id: str | None) -> None:
         except Exception as e:
             logger.warning(f"/ask HTML send failed chunk {i+1}: {e}, falling back to plain text")
             try:
-                # Fallback: send original markdown chunk without parse_mode
                 plain_chunks = _split_plain(answer)
                 plain_chunk = plain_chunks[i] if i < len(plain_chunks) else chunk
                 sent = await message.reply_text(plain_chunk)
@@ -112,7 +99,6 @@ async def _send_answer(message, answer: str, session_id: str | None) -> None:
             except Exception as e2:
                 logger.error(f"/ask reply chunk {i+1} failed entirely: {e2}")
 
-    # Map the last sent message to the session so reply can resume
     if last_sent_id and session_id:
         _sessions[last_sent_id] = session_id
         if len(_sessions) > 500:
@@ -121,7 +107,6 @@ async def _send_answer(message, answer: str, session_id: str | None) -> None:
 
 
 def register_ask_handler(bot: Client, memory) -> None:
-    """Register /ask and reply-to-continue handlers on the bot client."""
     owner_filter = filters.user(BOT_CONFIG["owner_chat_id"]) & filters.private
 
     @bot.on_message(filters.command("ask") & owner_filter)
@@ -144,9 +129,9 @@ def register_ask_handler(bot: Client, memory) -> None:
         await _send_answer(message, answer, session_id)
         logger.success(f"🔎 /ask done │ {len(answer)} chars │ session {session_id[:12] if session_id else 'none'}...")
 
+
     @bot.on_message(filters.reply & owner_filter & ~filters.command("ask"))
     async def handle_reply(client: Client, message):
-        # Check if this is a reply to a bot answer that has a session
         reply_to = message.reply_to_message
         if not reply_to or reply_to.from_user is None:
             return
@@ -167,7 +152,6 @@ def register_ask_handler(bot: Client, memory) -> None:
         thinking_msg = await message.reply_text("🔍 Думаю...")
 
         answer, new_session_id = await _run_ask_query(question, memory, resume_id=session_id)
-        # Use the same session_id (resume keeps it)
         effective_session = new_session_id or session_id
 
         try:

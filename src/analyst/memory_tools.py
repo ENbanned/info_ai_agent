@@ -1,5 +1,3 @@
-"""MCP server exposing memory search tools for the analyst agent."""
-
 import asyncio
 from datetime import datetime, timezone
 
@@ -7,7 +5,6 @@ from claude_agent_sdk import create_sdk_mcp_server, tool
 
 
 def create_memory_server(memory):
-    """Create an MCP server with memory search tools bound to the given memory instance."""
 
     @tool(
         name="search_memory",
@@ -50,7 +47,6 @@ def create_memory_server(memory):
 
         results = []
 
-        # Build metadata filters if state_filter is provided
         metadata_filters = {}
         if state_filter:
             metadata_filters["lifecycle_state"] = state_filter
@@ -109,8 +105,6 @@ def create_memory_server(memory):
     async def query_entity(args):
         entity = args["entity"].lower().replace(" ", "_")
 
-        # Use direct Cypher query via get_entity_relationships (O(1) by index)
-        # instead of get_all() + Python filter (O(N) full graph scan)
         rels = await asyncio.to_thread(
             memory.graph.get_entity_relationships,
             entity, filters={"user_id": "trader"}, limit=50
@@ -157,7 +151,6 @@ def create_memory_server(memory):
     async def get_cycle_summary(args):
         topic = args["topic"]
 
-        # Search previous analyst conclusions about this topic
         results = await memory.search(
             topic, user_id="trader", agent_id="analyst", limit=10
         )
@@ -166,7 +159,6 @@ def create_memory_server(memory):
         if not memories:
             return {"content": [{"type": "text", "text": f"No previous analyst coverage found for: {topic}"}]}
 
-        # Sort chronologically by timestamp (oldest first)
         def _get_ts(mem):
             md = mem.get("metadata", {})
             return md.get("timestamp", md.get("created_at", 0))
@@ -182,7 +174,6 @@ def create_memory_server(memory):
             md = mem.get("metadata", {})
             ts = _get_ts(mem)
 
-            # Format date
             if ts and ts > 0:
                 try:
                     dt = datetime.fromtimestamp(ts, tz=timezone.utc)
@@ -192,7 +183,6 @@ def create_memory_server(memory):
             else:
                 date_str = "unknown date"
 
-            # Extract thesis/confidence if available
             extras = []
             if md.get("thesis"):
                 extras.append(f"thesis: {md['thesis']}")
