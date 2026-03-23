@@ -1,13 +1,12 @@
 import json
 from pathlib import Path
 
+from src.pipeline.prompts import CRYPTO_EXTRACTION_PROMPT, GRAPH_CUSTOM_PROMPT, CUSTOM_UPDATE_MEMORY_PROMPT
 
 _CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.json"
 
-
 with open(_CONFIG_PATH) as f:
     CONFIG = json.load(f)
-
 
 TG_CONFIG = CONFIG["telegram"]
 VOYAGE_CONFIG = CONFIG["voyage"]
@@ -15,9 +14,6 @@ BOT_CONFIG = CONFIG["bot"]
 SOURCES_CONFIG = CONFIG["sources"]
 MODELS_CONFIG = CONFIG["models"]
 
-from src.pipeline.prompts import CRYPTO_EXTRACTION_PROMPT, GRAPH_CUSTOM_PROMPT, CUSTOM_UPDATE_MEMORY_PROMPT
-
-# Override mem0 LLM model with models.extraction
 _mem0_base = {**CONFIG["mem0"]}
 _mem0_base["llm"] = {**_mem0_base["llm"], "config": {"model": MODELS_CONFIG["extraction"]}}
 
