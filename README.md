@@ -130,6 +130,8 @@ cp config.json.example config.json
 nano config.json
 ```
 
+Save: <kbd>Ctrl</kbd>+<kbd>O</kbd>, <kbd>Enter</kbd>. Exit: <kbd>Ctrl</kbd>+<kbd>X</kbd>.
+
 Set these three values:
 - `bot.token` — bot token from @BotFather
 - `bot.owner_chat_id` — your Telegram user ID (get it from [@userinfobot](https://t.me/userinfobot))
