@@ -6,7 +6,7 @@ You add channels — the bot reads them, extracts key facts, builds a knowledge 
 
 ## Requirements
 
-- Ubuntu server, minimum 8GB RAM
+- Ubuntu server (8 GB RAM, 20 GB disk, 2 CPU)
 - [Claude Pro/Max/Teams](https://claude.ai) subscription
 - Bot token from [@BotFather](https://t.me/BotFather)
 - [Voyage AI](https://www.voyageai.com/) API key (free tier works)
