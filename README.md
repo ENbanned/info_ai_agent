@@ -59,7 +59,7 @@ docker compose up -d
 ### 5. First run — Telegram login
 
 ```bash
-.venv/bin/python main.py
+uv run main.py
 ```
 
 Enter your phone number and verification code when prompted. Wait for `System running`, then `Ctrl+C`.
@@ -68,7 +68,7 @@ Enter your phone number and verification code when prompted. Wait for `System ru
 
 ```bash
 screen -S agent
-.venv/bin/python main.py
+uv run main.py
 ```
 
 Press `Ctrl+A D` to detach. Reattach anytime with `screen -r agent`.
@@ -96,7 +96,7 @@ git pull
 uv sync
 bash mem0bot/patches/apply_patches.sh
 screen -S agent
-.venv/bin/python main.py
+uv run main.py
 ```
 
 ## Logs
