@@ -6,44 +6,27 @@ You add channels — the bot reads them, extracts key facts, builds a knowledge 
 
 ## Requirements
 
-- Linux server with **KVM virtualization** (not OpenVZ/LXC), minimum 8GB RAM, 25GB disk
+- Linux server (Ubuntu/Debian), minimum 8GB RAM
 - [Claude Pro/Max/Teams](https://claude.ai) subscription
-- Telegram account
+- Python 3.12+, Node.js 20+, Docker
 - Bot token from [@BotFather](https://t.me/BotFather)
 - [Voyage AI](https://www.voyageai.com/) API key (free tier works)
 
-## Step-by-step Setup
+## Setup
 
-### 1. Install Claude Code
+### 1. Install dependencies
 
 ```bash
+# Claude Code
 curl -fsSL https://claude.ai/install.sh | bash
-```
-
-If `claude` is not found after install:
-```bash
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
-```
-
-### 2. Install Docker
-
-Follow the official guide for your OS: [docs.docker.com/engine/install](https://docs.docker.com/engine/install/)
-
-Verify it works:
-```bash
-docker --version
-docker compose version
-```
-
-### 3. Log in to Claude
-
-```bash
 claude login
+
+# Python 3.12+ and Node.js — install via your package manager
+# Docker — https://docs.docker.com/engine/install/
 ```
 
-Opens a browser link — log in with your Claude account.
-
-### 4. Clone and configure
+### 2. Clone and configure
 
 ```bash
 git clone https://github.com/ENbanned/info_ai_agent.git
@@ -60,20 +43,35 @@ Fill in:
 
 > `api_id` and `api_hash` are pre-set to Telegram Desktop native client values (reverse-engineered). Don't change them — they tell Telegram servers this is a real desktop client, which reduces the risk of account restrictions.
 
-### 5. Start
+### 3. Install and patch
 
 ```bash
-docker compose up -d qdrant neo4j
-docker compose run --rm bot
+uv sync
+bash mem0bot/patches/apply_patches.sh
 ```
 
-First run will ask for your phone number and a verification code from Telegram. Enter them, wait until you see `System running`, then press `Ctrl+C`.
+### 4. Start infrastructure
 
 ```bash
 docker compose up -d
 ```
 
-Done. The bot is running.
+### 5. First run — Telegram login
+
+```bash
+.venv/bin/python main.py
+```
+
+Enter your phone number and verification code when prompted. Wait for `System running`, then `Ctrl+C`.
+
+### 6. Run in background
+
+```bash
+screen -S agent
+.venv/bin/python main.py
+```
+
+Press `Ctrl+A D` to detach. Reattach anytime with `screen -r agent`.
 
 ## Usage
 
@@ -93,14 +91,22 @@ Reports are delivered automatically every 6 hours.
 ## Updating
 
 ```bash
+screen -S agent -X quit
 git pull
-docker compose up -d --build
+uv sync
+bash mem0bot/patches/apply_patches.sh
+screen -S agent
+.venv/bin/python main.py
 ```
 
 ## Logs
 
 ```bash
-docker compose logs -f bot
+# Live
+screen -r agent
+
+# Log files
+ls data/logs/
 ```
 
 ## License

@@ -18,25 +18,6 @@ services:
     volumes:
       - neo4j_data:/data
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "mem0graphpass", "RETURN 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-
-  bot:
-    build: .
-    depends_on:
-      neo4j:
-        condition: service_healthy
-      qdrant:
-        condition: service_started
-    volumes:
-      - ./data:/app/data
-      - ./config.json:/app/config.json:ro
-      - ${CLAUDE_CREDS_DIR:-~/.claude}:/run/claude-creds:ro
-    restart: unless-stopped
 
 volumes:
   qdrant_data:
