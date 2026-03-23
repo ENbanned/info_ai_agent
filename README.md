@@ -19,18 +19,22 @@ You add channels — the bot reads them, extracts key facts, builds a knowledge 
 ```bash
 curl -fsSL https://claude.ai/install.sh | bash
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
+
+# Check
+claude --version
 claude login
 ```
 
 ### 2. Install Docker
 
-Follow [docs.docker.com/engine/install](https://docs.docker.com/engine/install/) for your OS. Quick check:
+Follow [docs.docker.com/engine/install](https://docs.docker.com/engine/install/) for your OS.
 
 ```bash
+# Check
 docker --version && docker compose version
 ```
 
-### 3. Install uv, Node.js, screen
+### 3. Install uv, Node.js 22, screen
 
 ```bash
 # uv (manages Python + packages)
@@ -38,8 +42,12 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 source ~/.bashrc
 uv python install 3.12
 
-# Node.js + screen
-apt update && apt install -y nodejs npm screen
+# Node.js 22 LTS
+curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+apt install -y nodejs screen
+
+# Check
+uv --version && python3 --version && node --version
 ```
 
 ### 4. Clone and configure
