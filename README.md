@@ -14,19 +14,34 @@ You add channels — the bot reads them, extracts key facts, builds a knowledge 
 
 ## Setup
 
-### 1. Install dependencies
+### 1. Install Claude Code
 
 ```bash
-# Claude Code
 curl -fsSL https://claude.ai/install.sh | bash
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 claude login
-
-# Python 3.12+ and Node.js — install via your package manager
-# Docker — https://docs.docker.com/engine/install/
 ```
 
-### 2. Clone and configure
+### 2. Install Docker
+
+Follow [docs.docker.com/engine/install](https://docs.docker.com/engine/install/) for your OS. Quick check:
+
+```bash
+docker --version && docker compose version
+```
+
+### 3. Install Python 3.12+, Node.js, uv
+
+```bash
+# Python 3.12 + Node.js (Ubuntu/Debian)
+apt update && apt install -y python3.12 python3.12-venv nodejs npm screen
+
+# uv (Python package manager)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source ~/.bashrc
+```
+
+### 4. Clone and configure
 
 ```bash
 git clone https://github.com/ENbanned/info_ai_agent.git
@@ -43,20 +58,20 @@ Fill in:
 
 > `api_id` and `api_hash` are pre-set to Telegram Desktop native client values (reverse-engineered). Don't change them — they tell Telegram servers this is a real desktop client, which reduces the risk of account restrictions.
 
-### 3. Install and patch
+### 5. Install and patch
 
 ```bash
 uv sync
 bash mem0bot/patches/apply_patches.sh
 ```
 
-### 4. Start infrastructure
+### 6. Start infrastructure
 
 ```bash
 docker compose up -d
 ```
 
-### 5. First run — Telegram login
+### 7. First run — Telegram login
 
 ```bash
 uv run main.py
@@ -64,7 +79,7 @@ uv run main.py
 
 Enter your phone number and verification code when prompted. Wait for `System running`, then `Ctrl+C`.
 
-### 6. Run
+### 8. Run
 
 ```bash
 bash run.sh
