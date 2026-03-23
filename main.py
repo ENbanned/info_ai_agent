@@ -2,8 +2,14 @@
 
 import asyncio
 import time
+from pathlib import Path
 
 from pyrogram import idle
+
+# Ensure data directories exist before anything else
+_DATA = Path(__file__).parent / "data"
+for _d in ("sessions", "logs", "media", "reports", "skills", "analyst_workdir", "classifier_workdir"):
+    (_DATA / _d).mkdir(parents=True, exist_ok=True)
 
 from src.log import setup_logging, logger
 from src.config import MEM0_CONFIG
