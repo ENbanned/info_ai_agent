@@ -142,6 +142,7 @@ Set these three values:
 ### 7. Install dependencies
 
 ```bash
+apt install -y build-essential
 uv sync
 bash mem0bot/patches/apply_patches.sh
 ```
