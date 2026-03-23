@@ -189,4 +189,4 @@ sudo -u agent screen -r agent
 
 ---
 
-MIT
+<p align="center"><a href="LICENSE">MIT License</a></p>
