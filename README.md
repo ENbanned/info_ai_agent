@@ -170,6 +170,7 @@ Creates a service user, copies Claude credentials, and launches the bot in a scr
 
 ```bash
 sudo -u agent screen -S agent -X quit
+git config --global --add safe.directory "$(pwd)"
 git pull
 uv sync
 bash mem0bot/patches/apply_patches.sh
