@@ -22,14 +22,17 @@ if [ "$(id -u)" = "0" ]; then
         PARENT="$(dirname "$PARENT")"
     done
 
-    # Copy Claude credentials so the service user can use the SDK
+    # Symlink Claude credentials so the agent always reads the latest
+    # auto-refreshed OAuth token (tokens expire every ~8 hours).
     SERVICE_HOME="$(eval echo ~$SERVICE_USER)"
     ROOT_CREDS="/root/.claude/.credentials.json"
     if [ -f "$ROOT_CREDS" ]; then
         mkdir -p "$SERVICE_HOME/.claude"
-        cp "$ROOT_CREDS" "$SERVICE_HOME/.claude/.credentials.json"
-        chown -R "$SERVICE_USER":"$SERVICE_USER" "$SERVICE_HOME/.claude"
-        chmod 600 "$SERVICE_HOME/.claude/.credentials.json"
+        rm -f "$SERVICE_HOME/.claude/.credentials.json"
+        ln -s "$ROOT_CREDS" "$SERVICE_HOME/.claude/.credentials.json"
+        # Agent needs read access; writeFileSync preserves mode across refreshes
+        chmod 644 "$ROOT_CREDS"
+        chmod o+x /root /root/.claude
     fi
 
     # Create tmp dir for mem0 SDK and workdirs

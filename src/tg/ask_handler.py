@@ -1,7 +1,10 @@
+import json
 import os
+from pathlib import Path
 
 from loguru import logger
 from pyrogram import Client, filters, enums
+from pyrogram.types import Message
 from claude_agent_sdk import query, ClaudeAgentOptions, ResultMessage, AssistantMessage, TextBlock
 
 from src.config import BOT_CONFIG, MODELS_CONFIG
@@ -9,7 +12,41 @@ from src.pipeline.prompts import ASK_SYSTEM_PROMPT
 from src.analyst.memory_tools import create_memory_server
 from src.tg.formatter import markdown_to_telegram_html, split_html_message
 
-_sessions: dict[int, str] = {}
+_SESSIONS_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "ask_sessions.json"
+_MEDIA_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "media"
+_MAX_SESSIONS = 500
+
+
+def _load_sessions() -> dict[str, str]:
+    if _SESSIONS_PATH.exists():
+        try:
+            data = json.loads(_SESSIONS_PATH.read_text())
+            return {str(k): v for k, v in data.items()}
+        except Exception:
+            pass
+    return {}
+
+
+def _save_sessions(sessions: dict[str, str]) -> None:
+    try:
+        _SESSIONS_PATH.write_text(json.dumps(sessions))
+    except Exception as e:
+        logger.warning(f"Failed to persist sessions: {e}")
+
+
+_sessions: dict[str, str] = _load_sessions()
+
+
+def _set_session(msg_id: int, session_id: str) -> None:
+    _sessions[str(msg_id)] = session_id
+    if len(_sessions) > _MAX_SESSIONS:
+        oldest = next(iter(_sessions))
+        _sessions.pop(oldest)
+    _save_sessions(_sessions)
+
+
+def _get_session(msg_id: int) -> str | None:
+    return _sessions.get(str(msg_id))
 
 
 def _build_options(memory, resume_id: str | None = None) -> ClaudeAgentOptions:
@@ -17,10 +54,10 @@ def _build_options(memory, resume_id: str | None = None) -> ClaudeAgentOptions:
 
     options = ClaudeAgentOptions(
         model=MODELS_CONFIG["analyst"],
-        tools=["WebSearch", "WebFetch"],
+        tools=["WebSearch", "WebFetch", "Read"],
         mcp_servers={"memory": mcp_server},
         allowed_tools=[
-            "WebSearch", "WebFetch",
+            "WebSearch", "WebFetch", "Read",
             "mcp__memory__search_memory", "mcp__memory__query_entity",
         ],
         max_turns=20,
@@ -33,6 +70,29 @@ def _build_options(memory, resume_id: str | None = None) -> ClaudeAgentOptions:
         options.resume = resume_id
 
     return options
+
+
+async def _download_photo(message: Message) -> str | None:
+    if not message.photo:
+        return None
+    filename = f"ask_{message.chat.id}_{message.id}.jpg"
+    dest = _MEDIA_DIR / filename
+    try:
+        await message.download(file_name=str(dest))
+        logger.debug(f"Photo saved │ {dest}")
+        return str(dest)
+    except Exception as e:
+        logger.error(f"Photo download failed: {e}")
+        return None
+
+
+def _build_prompt(text: str, image_path: str | None) -> str:
+    parts = []
+    if image_path:
+        parts.append(f"Use the Read tool to examine this image: {image_path}")
+    if text:
+        parts.append(text)
+    return "\n\n".join(parts)
 
 
 async def _run_ask_query(question: str, memory, resume_id: str | None = None) -> tuple[str, str | None]:
@@ -100,9 +160,7 @@ async def _send_answer(message, answer: str, session_id: str | None) -> None:
                 logger.error(f"/ask reply chunk {i+1} failed entirely: {e2}")
 
     if last_sent_id and session_id:
-        _sessions[last_sent_id] = session_id
-        if len(_sessions) > 500:
-            _sessions.pop(next(iter(_sessions)))
+        _set_session(last_sent_id, session_id)
         logger.debug(f"/ask session mapped │ msg {last_sent_id} → {session_id[:12]}...")
 
 
@@ -111,15 +169,22 @@ def register_ask_handler(bot: Client, memory) -> None:
 
     @bot.on_message(filters.command("ask") & owner_filter)
     async def handle_ask(client: Client, message):
-        question = message.text.partition(" ")[2].strip() if message.text else ""
-        if not question:
-            await message.reply_text("Формат: /ask <вопрос>")
+        text = message.text.partition(" ")[2].strip() if message.text else ""
+        caption = message.caption.partition(" ")[2].strip() if message.caption else ""
+        question_text = text or caption
+
+        image_path = await _download_photo(message)
+
+        if not question_text and not image_path:
+            await message.reply_text("Формат: /ask <вопрос> (можно приложить фото)")
             return
 
-        logger.info(f"🔎 /ask │ {question[:100]}")
+        prompt = _build_prompt(question_text, image_path)
+        img_tag = " 📷" if image_path else ""
+        logger.info(f"🔎 /ask{img_tag} │ {question_text[:100]}")
         thinking_msg = await message.reply_text("🔍 Думаю...")
 
-        answer, session_id = await _run_ask_query(question, memory)
+        answer, session_id = await _run_ask_query(prompt, memory)
 
         try:
             await thinking_msg.delete()
@@ -140,18 +205,25 @@ def register_ask_handler(bot: Client, memory) -> None:
         if reply_to.from_user.id != bot_me.id:
             return
 
-        session_id = _sessions.get(reply_to.id)
+        session_id = _get_session(reply_to.id)
         if not session_id:
             return
 
-        question = message.text.strip() if message.text else ""
-        if not question:
+        question_text = message.text.strip() if message.text else ""
+        if not question_text:
+            question_text = message.caption.strip() if message.caption else ""
+
+        image_path = await _download_photo(message)
+
+        if not question_text and not image_path:
             return
 
-        logger.info(f"🔎 /ask follow-up │ {question[:100]} │ session {session_id[:12]}...")
+        prompt = _build_prompt(question_text, image_path)
+        img_tag = " 📷" if image_path else ""
+        logger.info(f"🔎 /ask follow-up{img_tag} │ {(question_text or 'image')[:100]} │ session {session_id[:12]}...")
         thinking_msg = await message.reply_text("🔍 Думаю...")
 
-        answer, new_session_id = await _run_ask_query(question, memory, resume_id=session_id)
+        answer, new_session_id = await _run_ask_query(prompt, memory, resume_id=session_id)
         effective_session = new_session_id or session_id
 
         try:
