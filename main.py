@@ -19,6 +19,7 @@ from src.pipeline.ingest import ingest_worker
 from src.analyst.scheduler import analyst_loop
 from src.tg.ask_handler import register_ask_handler
 from src.tg.channel_manager import register_channel_manager
+from src.tg.report_handler import register_report_handler
 
 setup_logging()
 
@@ -44,13 +45,14 @@ async def main():
     user_me = await user.get_me()
     logger.success(f"User client │ @{user_me.username}")
 
+    memory_lock = asyncio.Lock()
+
     register_ask_handler(bot, memory)
     register_channel_manager(bot, user, store)
+    register_report_handler(bot, memory, memory_lock)
 
     queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
     register_listener(user, queue, store)
-
-    memory_lock = asyncio.Lock()
     ingest_task = asyncio.create_task(ingest_worker(queue, memory, bot, memory_lock))
     analyst_task = asyncio.create_task(analyst_loop(memory, bot, system_start, memory_lock))
 

@@ -748,7 +748,7 @@ Include a header with "Crypto Intelligence Digest" and a footer with page number
             "mcp__memory__search_memory", "mcp__memory__query_entity",
             "mcp__memory__get_cycle_summary",
         ],
-        max_turns=30,
+        max_turns=50,
         effort="high",
         permission_mode="bypassPermissions",
         system_prompt=system_prompt,
@@ -760,10 +760,11 @@ Include a header with "Crypto Intelligence Digest" and a footer with page number
     try:
         async for message in query(prompt=prompt, options=options):
             if isinstance(message, ResultMessage) and message.result:
-                report = message.result
+                if len(message.result) > len(report):
+                    report = message.result
             elif isinstance(message, AssistantMessage):
                 for block in message.content:
-                    if isinstance(block, TextBlock):
+                    if isinstance(block, TextBlock) and len(block.text) > len(report):
                         report = block.text
     except Exception as e:
         logger.error(f"Opus analyst failed: {e}")
