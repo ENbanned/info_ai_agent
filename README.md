@@ -49,6 +49,7 @@ Telegram channels → Listener → Classifier (Sonnet) → mem0 (Qdrant + Neo4j)
 | `/pause <name>` | Temporarily mute a channel |
 | `/resume <name>` | Unmute |
 | `/ask <question>` | Ask about anything the bot has seen |
+| `/report DD.MM.YYYY HH:MM` | Resend or manually generate a report for a specific cycle. Useful if the bot was down or a cycle failed. Time is in MSK, valid hours: 00, 06, 12, 18 |
 
 ## What you need
 
