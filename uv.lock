@@ -1240,7 +1240,7 @@ requires-dist = [
     { name = "claude-agent-sdk", specifier = ">=0.1.48" },
     { name = "kurigram", specifier = ">=2.2.19" },
     { name = "loguru", specifier = ">=0.7.3" },
-    { name = "mem0ai", extras = ["graph"], specifier = ">=1.0.5" },
+    { name = "mem0ai", extras = ["graph"], specifier = "==1.0.5" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "tgcrypto", specifier = ">=1.2.5" },
     { name = "voyageai", specifier = ">=0.3.7" },

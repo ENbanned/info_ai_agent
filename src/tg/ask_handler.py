@@ -1,9 +1,10 @@
+import asyncio
 import json
 import os
 from pathlib import Path
 
 from loguru import logger
-from pyrogram import Client, filters, enums
+from pyrogram import Client, ContinuePropagation, filters, enums
 from pyrogram.types import Message
 from claude_agent_sdk import query, ClaudeAgentOptions, ResultMessage, AssistantMessage, TextBlock
 
@@ -15,6 +16,7 @@ from src.tg.formatter import markdown_to_telegram_html, split_html_message
 _SESSIONS_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "ask_sessions.json"
 _MEDIA_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "media"
 _MAX_SESSIONS = 500
+_COLLECT_TIMEOUT = 0.5
 
 
 def _load_sessions() -> dict[str, str]:
@@ -72,7 +74,7 @@ def _build_options(memory, resume_id: str | None = None) -> ClaudeAgentOptions:
     return options
 
 
-async def _download_photo(message: Message) -> str | None:
+async def _download_single_photo(message: Message) -> str | None:
     if not message.photo:
         return None
     filename = f"ask_{message.chat.id}_{message.id}.jpg"
@@ -86,10 +88,33 @@ async def _download_photo(message: Message) -> str | None:
         return None
 
 
-def _build_prompt(text: str, image_path: str | None) -> str:
+async def _download_photos(message: Message) -> list[str]:
+    if message.media_group_id:
+        try:
+            group_msgs = await message.get_media_group()
+        except Exception as e:
+            logger.warning(f"get_media_group failed: {e}, falling back to single photo")
+            group_msgs = [message]
+    else:
+        group_msgs = [message] if message.photo else []
+
+    paths = []
+    for msg in group_msgs:
+        if msg.photo:
+            path = await _download_single_photo(msg)
+            if path:
+                paths.append(path)
+    return paths
+
+
+def _build_prompt(text: str, image_paths: list[str]) -> str:
     parts = []
-    if image_path:
-        parts.append(f"Use the Read tool to examine this image: {image_path}")
+    if image_paths:
+        if len(image_paths) == 1:
+            parts.append(f"Use the Read tool to examine this image: {image_paths[0]}")
+        else:
+            joined = "\n".join(image_paths)
+            parts.append(f"Use the Read tool to examine these {len(image_paths)} images:\n{joined}")
     if text:
         parts.append(text)
     return "\n\n".join(parts)
@@ -167,22 +192,26 @@ async def _send_answer(message, answer: str, session_id: str | None) -> None:
 def register_ask_handler(bot: Client, memory) -> None:
     owner_filter = filters.user(BOT_CONFIG["owner_chat_id"]) & filters.private
 
-    @bot.on_message(filters.command("ask") & owner_filter)
-    async def handle_ask(client: Client, message):
-        text = message.text.partition(" ")[2].strip() if message.text else ""
-        caption = message.caption.partition(" ")[2].strip() if message.caption else ""
-        question_text = text or caption
+    _pending: dict[int, dict] = {}  # chat_id -> {text, images, orig_message, task}
 
-        image_path = await _download_photo(message)
-
-        if not question_text and not image_path:
-            await message.reply_text("Формат: /ask <вопрос> (можно приложить фото)")
+    async def _flush(chat_id: int) -> None:
+        await asyncio.sleep(_COLLECT_TIMEOUT)
+        pending = _pending.pop(chat_id, None)
+        if not pending:
             return
 
-        prompt = _build_prompt(question_text, image_path)
-        img_tag = " 📷" if image_path else ""
-        logger.info(f"🔎 /ask{img_tag} │ {question_text[:100]}")
-        thinking_msg = await message.reply_text("🔍 Думаю...")
+        text = pending["text"]
+        image_paths = pending["images"]
+        orig_message = pending["orig_message"]
+
+        if not text and not image_paths:
+            return
+
+        prompt = _build_prompt(text, image_paths)
+        n = len(image_paths)
+        img_tag = f" 📷x{n}" if n > 1 else (" 📷" if n == 1 else "")
+        logger.info(f"🔎 /ask{img_tag} │ {text[:100]}")
+        thinking_msg = await orig_message.reply_text("🔍 Думаю...")
 
         answer, session_id = await _run_ask_query(prompt, memory)
 
@@ -191,12 +220,55 @@ def register_ask_handler(bot: Client, memory) -> None:
         except Exception:
             pass
 
-        await _send_answer(message, answer, session_id)
+        await _send_answer(orig_message, answer, session_id)
         logger.success(f"🔎 /ask done │ {len(answer)} chars │ session {session_id[:12] if session_id else 'none'}...")
 
+    def _reschedule(chat_id: int) -> None:
+        existing = _pending.get(chat_id, {}).get("task")
+        if existing:
+            existing.cancel()
+        _pending[chat_id]["task"] = asyncio.create_task(_flush(chat_id))
+
+    @bot.on_message(filters.command("ask") & owner_filter)
+    async def handle_ask(client: Client, message: Message) -> None:
+        text = message.text.partition(" ")[2].strip() if message.text else ""
+        caption = message.caption.partition(" ")[2].strip() if message.caption else ""
+        question_text = text or caption
+
+        image_paths = await _download_photos(message)
+
+        if not question_text and not image_paths:
+            await message.reply_text("Формат: /ask <вопрос> (можно приложить фото)")
+            return
+
+        chat_id = message.chat.id
+        existing = _pending.get(chat_id, {}).get("task")
+        if existing:
+            existing.cancel()
+
+        _pending[chat_id] = {
+            "text": question_text,
+            "images": image_paths,
+            "orig_message": message,
+            "task": None,
+        }
+        _reschedule(chat_id)
+
+    _non_cmd = filters.create(lambda _, __, m: bool(m.text) and not m.text.startswith("/"))
+
+    @bot.on_message(~filters.reply & _non_cmd & owner_filter)
+    async def handle_text_continuation(client: Client, message: Message) -> None:
+        chat_id = message.chat.id
+        if chat_id not in _pending:
+            return
+        pending = _pending[chat_id]
+        pending["text"] = (pending["text"] + "\n" + message.text).strip() if pending["text"] else message.text
+        _reschedule(chat_id)
 
     @bot.on_message(filters.reply & owner_filter & ~filters.command("ask"))
-    async def handle_reply(client: Client, message):
+    async def handle_reply(client: Client, message: Message) -> None:
+        if message.text and message.text.startswith("/"):
+            raise ContinuePropagation
         reply_to = message.reply_to_message
         if not reply_to or reply_to.from_user is None:
             return
@@ -213,13 +285,14 @@ def register_ask_handler(bot: Client, memory) -> None:
         if not question_text:
             question_text = message.caption.strip() if message.caption else ""
 
-        image_path = await _download_photo(message)
+        image_paths = await _download_photos(message)
 
-        if not question_text and not image_path:
+        if not question_text and not image_paths:
             return
 
-        prompt = _build_prompt(question_text, image_path)
-        img_tag = " 📷" if image_path else ""
+        prompt = _build_prompt(question_text, image_paths)
+        n = len(image_paths)
+        img_tag = f" 📷x{n}" if n > 1 else (" 📷" if n == 1 else "")
         logger.info(f"🔎 /ask follow-up{img_tag} │ {(question_text or 'image')[:100]} │ session {session_id[:12]}...")
         thinking_msg = await message.reply_text("🔍 Думаю...")
 

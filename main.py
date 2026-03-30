@@ -20,6 +20,7 @@ from src.analyst.scheduler import analyst_loop
 from src.tg.ask_handler import register_ask_handler
 from src.tg.channel_manager import register_channel_manager
 from src.tg.report_handler import register_report_handler
+from src.tg.backfill_handler import register_backfill_handler
 
 setup_logging()
 
@@ -50,6 +51,7 @@ async def main():
     register_ask_handler(bot, memory)
     register_channel_manager(bot, user, store)
     register_report_handler(bot, memory, memory_lock)
+    register_backfill_handler(bot, user, store, memory, memory_lock)
 
     queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
     register_listener(user, queue, store)

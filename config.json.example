@@ -46,6 +46,8 @@
     "channels": []
   },
 
+  "claude_token": "YOUR_CLAUDE_CODE_OAUTH_TOKEN",
+
   "bot": {
     "token": "YOUR_BOT_TOKEN",
     "owner_chat_id": 0

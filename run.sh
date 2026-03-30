@@ -22,18 +22,9 @@ if [ "$(id -u)" = "0" ]; then
         PARENT="$(dirname "$PARENT")"
     done
 
-    # Symlink Claude credentials so the agent always reads the latest
-    # auto-refreshed OAuth token (tokens expire every ~8 hours).
-    SERVICE_HOME="$(eval echo ~$SERVICE_USER)"
-    ROOT_CREDS="/root/.claude/.credentials.json"
-    if [ -f "$ROOT_CREDS" ]; then
-        mkdir -p "$SERVICE_HOME/.claude"
-        rm -f "$SERVICE_HOME/.claude/.credentials.json"
-        ln -s "$ROOT_CREDS" "$SERVICE_HOME/.claude/.credentials.json"
-        # Agent needs read access; writeFileSync preserves mode across refreshes
-        chmod 644 "$ROOT_CREDS"
-        chmod o+x /root /root/.claude
-    fi
+    # Claude auth: long-lived token from config.json is set via CLAUDE_CODE_OAUTH_TOKEN
+    # in src/config.py at startup. No credential symlinks needed.
+    # Generate token with: claude setup-token
 
     # Create tmp dir for mem0 SDK and workdirs
     install -d -o "$SERVICE_USER" -g "$SERVICE_USER" /tmp/mem0-claude-code

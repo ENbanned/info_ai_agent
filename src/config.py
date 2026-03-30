@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 from src.pipeline.prompts import CRYPTO_EXTRACTION_PROMPT, GRAPH_CUSTOM_PROMPT, CUSTOM_UPDATE_MEMORY_PROMPT
@@ -13,6 +14,10 @@ VOYAGE_CONFIG = CONFIG["voyage"]
 BOT_CONFIG = CONFIG["bot"]
 SOURCES_CONFIG = CONFIG["sources"]
 MODELS_CONFIG = CONFIG["models"]
+
+_claude_token = CONFIG.get("claude_token", "")
+if _claude_token:
+    os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = _claude_token
 
 _mem0_base = {**CONFIG["mem0"]}
 _mem0_base["llm"] = {**_mem0_base["llm"], "config": {"model": MODELS_CONFIG["extraction"]}}

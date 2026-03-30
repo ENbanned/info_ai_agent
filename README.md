@@ -74,11 +74,13 @@ source ~/.bashrc
 claude --version
 ```
 
-Log in (opens a browser link):
+Generate a long-lived token (1 year) so the bot doesn't lose authentication during 24/7 operation:
 
 ```bash
-claude login
+claude setup-token
 ```
+
+Open the provided link in a browser, authorize, and copy the token into `config.json` → `claude_token`.
 
 ### 2. Install Docker
 
