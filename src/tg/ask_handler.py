@@ -192,7 +192,8 @@ async def _send_answer(message, answer: str, session_id: str | None) -> None:
 def register_ask_handler(bot: Client, memory) -> None:
     owner_filter = filters.user(BOT_CONFIG["owner_chat_id"]) & filters.private
 
-    _pending: dict[int, dict] = {}  # chat_id -> {text, images, orig_message, task}
+    # chat_id -> {text, images, orig_message, resume_session_id, task}
+    _pending: dict[int, dict] = {}
 
     async def _flush(chat_id: int) -> None:
         await asyncio.sleep(_COLLECT_TIMEOUT)
@@ -203,6 +204,7 @@ def register_ask_handler(bot: Client, memory) -> None:
         text = pending["text"]
         image_paths = pending["images"]
         orig_message = pending["orig_message"]
+        resume_session_id = pending.get("resume_session_id")
 
         if not text and not image_paths:
             return
@@ -210,18 +212,23 @@ def register_ask_handler(bot: Client, memory) -> None:
         prompt = _build_prompt(text, image_paths)
         n = len(image_paths)
         img_tag = f" 📷x{n}" if n > 1 else (" 📷" if n == 1 else "")
-        logger.info(f"🔎 /ask{img_tag} │ {text[:100]}")
+        label = "/ask follow-up" if resume_session_id else "/ask"
+        logger.info(f"🔎 {label}{img_tag} │ {text[:100]}")
         thinking_msg = await orig_message.reply_text("🔍 Думаю...")
 
-        answer, session_id = await _run_ask_query(prompt, memory)
+        answer, new_session_id = await _run_ask_query(prompt, memory, resume_id=resume_session_id)
+        effective_session = new_session_id or resume_session_id
 
         try:
             await thinking_msg.delete()
         except Exception:
             pass
 
-        await _send_answer(orig_message, answer, session_id)
-        logger.success(f"🔎 /ask done │ {len(answer)} chars │ session {session_id[:12] if session_id else 'none'}...")
+        await _send_answer(orig_message, answer, effective_session)
+        logger.success(
+            f"🔎 {label} done │ {len(answer)} chars │ "
+            f"session {effective_session[:12] if effective_session else 'none'}..."
+        )
 
     def _reschedule(chat_id: int) -> None:
         existing = _pending.get(chat_id, {}).get("task")
@@ -250,6 +257,7 @@ def register_ask_handler(bot: Client, memory) -> None:
             "text": question_text,
             "images": image_paths,
             "orig_message": message,
+            "resume_session_id": None,
             "task": None,
         }
         _reschedule(chat_id)
@@ -290,19 +298,32 @@ def register_ask_handler(bot: Client, memory) -> None:
         if not question_text and not image_paths:
             return
 
-        prompt = _build_prompt(question_text, image_paths)
-        n = len(image_paths)
-        img_tag = f" 📷x{n}" if n > 1 else (" 📷" if n == 1 else "")
-        logger.info(f"🔎 /ask follow-up{img_tag} │ {(question_text or 'image')[:100]} │ session {session_id[:12]}...")
-        thinking_msg = await message.reply_text("🔍 Думаю...")
+        chat_id = message.chat.id
 
-        answer, new_session_id = await _run_ask_query(prompt, memory, resume_id=session_id)
-        effective_session = new_session_id or session_id
+        # If a pending entry already exists for the same session (e.g. another
+        # part of a Telegram-split long reply just landed), merge into it.
+        existing = _pending.get(chat_id)
+        if existing and existing.get("resume_session_id") == session_id:
+            if question_text:
+                existing["text"] = (
+                    existing["text"] + "\n" + question_text
+                ).strip() if existing["text"] else question_text
+            if image_paths:
+                existing["images"].extend(image_paths)
+            _reschedule(chat_id)
+            return
 
-        try:
-            await thinking_msg.delete()
-        except Exception:
-            pass
+        # Different/no pending — replace it.
+        if existing:
+            existing_task = existing.get("task")
+            if existing_task:
+                existing_task.cancel()
 
-        await _send_answer(message, answer, effective_session)
-        logger.success(f"🔎 /ask follow-up done │ {len(answer)} chars")
+        _pending[chat_id] = {
+            "text": question_text,
+            "images": image_paths,
+            "orig_message": message,
+            "resume_session_id": session_id,
+            "task": None,
+        }
+        _reschedule(chat_id)
