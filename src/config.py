@@ -19,6 +19,8 @@ _claude_token = CONFIG.get("claude_token", "")
 if _claude_token:
     os.environ["CLAUDE_CODE_OAUTH_TOKEN"] = _claude_token
 
+os.environ.setdefault("CLAUDE_ENABLE_STREAM_WATCHDOG", "1")
+
 _mem0_base = {**CONFIG["mem0"]}
 _mem0_base["llm"] = {**_mem0_base["llm"], "config": {"model": MODELS_CONFIG["extraction"]}}
 
