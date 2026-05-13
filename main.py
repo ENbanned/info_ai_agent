@@ -13,7 +13,7 @@ from src.log import setup_logging, logger
 from src.config import MEM0_CONFIG
 from src.channels import ChannelStore
 from src.tg.create_session import get_client
-from src.tg.bot import get_bot_client
+from src.tg.bot import get_bot_client, bot_watchdog
 from src.tg.listener import register_listener
 from src.pipeline.ingest import ingest_worker
 from src.analyst.scheduler import analyst_loop
@@ -57,6 +57,7 @@ async def main():
     register_listener(user, queue, store)
     ingest_task = asyncio.create_task(ingest_worker(queue, memory, bot, memory_lock))
     analyst_task = asyncio.create_task(analyst_loop(memory, bot, system_start, memory_lock))
+    watchdog_task = asyncio.create_task(bot_watchdog(bot))
 
     logger.success("🟢 System running │ listening + analyst scheduled")
 
@@ -66,7 +67,8 @@ async def main():
         logger.info("Shutting down...")
         ingest_task.cancel()
         analyst_task.cancel()
-        for task in [ingest_task, analyst_task]:
+        watchdog_task.cancel()
+        for task in [ingest_task, analyst_task, watchdog_task]:
             try:
                 await task
             except asyncio.CancelledError:

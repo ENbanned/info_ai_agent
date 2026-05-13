@@ -20,8 +20,10 @@ data/media/
 data/reports/
 data/channels.json
 data/world_model.json
+data/ask_sessions.json
 data/analyst_workdir/node_modules/
 data/analyst_workdir/*.js
+data/classifier_workdir/
 
 # IDE / tools
 .claude/

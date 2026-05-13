@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 from loguru import logger
@@ -18,6 +19,20 @@ def get_bot_client() -> Client:
         api_hash=TG_CONFIG["api_hash"],
         bot_token=BOT_CONFIG["token"],
     )
+
+
+async def bot_watchdog(bot: Client, interval: int = 180, probe_timeout: int = 20) -> None:
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            await asyncio.wait_for(bot.get_me(), timeout=probe_timeout)
+        except Exception as e:
+            logger.warning(f"🩺 Bot watchdog │ get_me failed ({e!r}), restarting bot client...")
+            try:
+                await asyncio.wait_for(bot.restart(), timeout=60)
+                logger.success("🩺 Bot watchdog │ bot client restarted")
+            except Exception as e2:
+                logger.error(f"🩺 Bot watchdog │ restart failed: {e2!r}")
 
 
 async def send_alert(bot: Client, text: str, channel_name: str) -> None:
